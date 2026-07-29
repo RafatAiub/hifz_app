@@ -16,6 +16,7 @@
     "@expo-google-fonts/noto-naskh-arabic": "^0.4.2",
     "@expo-google-fonts/noto-sans-bengali": "^0.4.2",
     "@supabase/supabase-js": "^2.57.4",
+    "buffer": "^6.0.3",
     "expo": "~57.0.8",
     "expo-audio": "~57.0.3",
     "expo-constants": "~57.0.7",
