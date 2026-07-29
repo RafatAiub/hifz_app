@@ -1,7 +1,8 @@
 import { StyleSheet, Text, View } from 'react-native';
 
+import { useThemedStyles } from '@/theme/create-styles';
 import type { QuranAyah } from '@/domain/types';
-import { colors, radius, spacing, typography } from '@/theme/tokens';
+import { radius, spacing, typography, type ColorPalette } from '@/theme/tokens';
 
 export function QuranAyahRow({
   ayah,
@@ -12,6 +13,7 @@ export function QuranAyahRow({
   hidden?: boolean;
   active?: boolean;
 }) {
+  const styles = useThemedStyles(createStyles);
   return (
     <View style={[styles.row, active && styles.active]}>
       <View style={styles.number}>
@@ -19,7 +21,7 @@ export function QuranAyahRow({
       </View>
       <View style={styles.copy}>
         {hidden ? (
-          <View accessibilityLabel="আয়াতটি লুকানো আছে" style={styles.hiddenLine} />
+          <View accessibilityLabel="আয়াতটি লুকানো আছে" style={styles.hiddenLine} />
         ) : (
           <Text selectable style={styles.arabic}>
             {ayah.arabic}
@@ -31,56 +33,58 @@ export function QuranAyahRow({
   );
 }
 
-const styles = StyleSheet.create({
-  row: {
-    flexDirection: 'row',
-    gap: spacing.md,
-    paddingVertical: spacing.lg,
-    borderBottomColor: colors.line,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  active: {
-    backgroundColor: colors.mint,
-    marginHorizontal: -spacing.md,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.md,
-  },
-  number: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 5,
-  },
-  numberText: {
-    color: colors.white,
-    fontFamily: typography.bengaliMedium,
-    fontSize: 12,
-  },
-  copy: {
-    flex: 1,
-  },
-  arabic: {
-    color: colors.ink,
-    fontFamily: typography.arabic,
-    fontSize: 31,
-    lineHeight: 55,
-    textAlign: 'right',
-    writingDirection: 'rtl',
-  },
-  translation: {
-    color: colors.muted,
-    fontFamily: typography.bengali,
-    fontSize: 14,
-    lineHeight: 23,
-    marginTop: spacing.xs,
-  },
-  hiddenLine: {
-    height: 42,
-    marginVertical: 8,
-    borderRadius: radius.sm,
-    backgroundColor: colors.line,
-  },
-});
+function createStyles(colors: ColorPalette) {
+  return {
+    row: {
+      flexDirection: 'row' as const,
+      gap: spacing.md,
+      paddingVertical: spacing.lg,
+      borderBottomColor: colors.line,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+    },
+    active: {
+      backgroundColor: colors.mint,
+      marginHorizontal: -spacing.md,
+      paddingHorizontal: spacing.md,
+      borderRadius: radius.md,
+    },
+    number: {
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      backgroundColor: colors.primary,
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+      marginTop: 5,
+    },
+    numberText: {
+      color: colors.white,
+      fontFamily: typography.bengaliMedium,
+      fontSize: 12,
+    },
+    copy: {
+      flex: 1,
+    },
+    arabic: {
+      color: colors.ink,
+      fontFamily: typography.arabic,
+      fontSize: 31,
+      lineHeight: 55,
+      textAlign: 'right' as const,
+      writingDirection: 'rtl' as const,
+    },
+    translation: {
+      color: colors.muted,
+      fontFamily: typography.bengali,
+      fontSize: 14,
+      lineHeight: 23,
+      marginTop: spacing.xs,
+    },
+    hiddenLine: {
+      height: 42,
+      marginVertical: 8,
+      borderRadius: radius.sm,
+      backgroundColor: colors.line,
+    },
+  };
+}

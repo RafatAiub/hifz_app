@@ -15,9 +15,31 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { AppProvider } from '@/app-state/provider';
-import { colors } from '@/theme/tokens';
+import { ThemeProvider, useThemeColors, useThemeMode } from '@/theme/theme-context';
 
 void SplashScreen.preventAutoHideAsync();
+
+function ThemedStack() {
+  const colors = useThemeColors();
+  const { mode } = useThemeMode();
+
+  return (
+    <>
+      <StatusBar style={mode === 'dark' ? 'light' : 'dark'} />
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: colors.canvas },
+          animation: 'slide_from_right',
+        }}
+      >
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="session" />
+        <Stack.Screen name="settings" />
+      </Stack>
+    </>
+  );
+}
 
 export default function RootLayout() {
   const [bengaliLoaded] = useBengaliFonts({
@@ -38,18 +60,9 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <AppProvider>
-          <StatusBar style="dark" />
-          <Stack
-            screenOptions={{
-              headerShown: false,
-              contentStyle: { backgroundColor: colors.canvas },
-              animation: 'slide_from_right',
-            }}
-          >
-            <Stack.Screen name="(tabs)" />
-            <Stack.Screen name="session" />
-            <Stack.Screen name="settings" />
-          </Stack>
+          <ThemeProvider>
+            <ThemedStack />
+          </ThemeProvider>
         </AppProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

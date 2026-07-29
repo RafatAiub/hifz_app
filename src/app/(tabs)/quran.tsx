@@ -1,19 +1,71 @@
 import { useAudioPlayer } from 'expo-audio';
-import { Download, Pause, Play, WifiOff } from 'lucide-react-native';
+import { AlertTriangle, ChevronLeft, Download, Pause, Play, WifiOff } from 'lucide-react-native';
 import { useMemo, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { QuranAyahRow } from '@/components/quran-ayah';
 import { AppScreen, IconAction } from '@/components/ui';
 import { quranDemoPack } from '@/data/quran-pack';
 import { resolveAudioSource } from '@/services/audio-cache';
-import { colors, radius, spacing, typography } from '@/theme/tokens';
+import { useThemedStyles } from '@/theme/create-styles';
+import { useThemeColors } from '@/theme/theme-context';
+import { radius, spacing, typography, type ColorPalette } from '@/theme/tokens';
 
 export default function QuranScreen() {
+  const [openSurah, setOpenSurah] = useState<number | null>(null);
+
+  return openSurah === null ? (
+    <SurahList onSelect={setOpenSurah} />
+  ) : (
+    <SurahDetail surahNumber={openSurah} onBack={() => setOpenSurah(null)} />
+  );
+}
+
+function SurahList({ onSelect }: { onSelect: (surahNumber: number) => void }) {
+  const styles = useThemedStyles(createStyles);
+  return (
+    <AppScreen eyebrow="IndoPak 13-line" title="কুরআন">
+      <View style={styles.list}>
+        {quranDemoPack.surahs.map((surah) => (
+          <Pressable
+            key={surah.number}
+            style={({ pressed }) => [styles.listRow, pressed && styles.listRowPressed]}
+            onPress={() => onSelect(surah.number)}
+          >
+            <View style={styles.listNumber}>
+              <Text style={styles.listNumberText}>{surah.number}</Text>
+            </View>
+            <View style={styles.listCopy}>
+              <Text style={styles.listTitle} numberOfLines={1}>
+                {surah.nameBn} · {surah.nameArabic}
+              </Text>
+              <Text style={styles.listMeta}>{surah.ayahCount} আয়াত</Text>
+            </View>
+          </Pressable>
+        ))}
+      </View>
+    </AppScreen>
+  );
+}
+
+function SurahDetail({
+  surahNumber,
+  onBack,
+}: {
+  surahNumber: number;
+  onBack: () => void;
+}) {
+  const colors = useThemeColors();
+  const styles = useThemedStyles(createStyles);
   const player = useAudioPlayer();
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
-  const surah = quranDemoPack.surahs[0];
+  const surah = quranDemoPack.surahs.find((s) => s.number === surahNumber);
+  const ayahs = useMemo(
+    () => quranDemoPack.ayahs.filter((a) => a.surahNumber === surahNumber),
+    [surahNumber],
+  );
+  const hasUnverifiedLines = ayahs.some((a) => !a.lineDataVerified);
   const title = useMemo(
     () => `${surah?.nameBn ?? 'সূরা'} · ${surah?.nameArabic ?? ''}`,
     [surah],
@@ -33,9 +85,7 @@ export default function QuranScreen() {
   async function downloadPack() {
     setDownloading(true);
     try {
-      await Promise.all(
-        quranDemoPack.ayahs.map((ayah) => resolveAudioSource(ayah.audioUrl)),
-      );
+      await Promise.all(ayahs.map((ayah) => resolveAudioSource(ayah.audioUrl)));
     } finally {
       setDownloading(false);
     }
@@ -54,9 +104,16 @@ export default function QuranScreen() {
         />
       }
     >
+      <Pressable style={styles.backRow} onPress={onBack} accessibilityRole="button">
+        <ChevronLeft color={colors.primary} size={18} />
+        <Text style={styles.backLabel}>সূরার তালিকা</Text>
+      </Pressable>
+
       <View style={styles.surahHeader}>
-        <Text style={styles.surahTitle}>{title}</Text>
-        <Text style={styles.meta}>{surah?.ayahCount ?? 0} আয়াত</Text>
+        <Text style={styles.surahTitle} numberOfLines={1}>
+          {title}
+        </Text>
+        <Text style={styles.meta}>{surah?.ayahCount ?? 0} আয়াত</Text>
       </View>
 
       <View style={styles.offlineNote}>
@@ -66,7 +123,16 @@ export default function QuranScreen() {
         </Text>
       </View>
 
-      {quranDemoPack.ayahs.map((ayah) => (
+      {hasUnverifiedLines ? (
+        <View style={styles.warningNote}>
+          <AlertTriangle color={colors.danger} size={18} />
+          <Text style={styles.warningText}>
+            এই সূরার লাইন বিভাজন এখনো একজন আলেম দ্বারা যাচাই করা হয়নি — শুধুমাত্র আনুমানিক।
+          </Text>
+        </View>
+      ) : null}
+
+      {ayahs.map((ayah) => (
         <View key={ayah.key}>
           <QuranAyahRow ayah={ayah} active={activeKey === ayah.key} />
           <View style={styles.audioRow}>
@@ -82,7 +148,7 @@ export default function QuranScreen() {
               }
               onPress={() => void play(ayah.audioUrl, ayah.key)}
             />
-            <Text style={styles.listenLabel}>আয়াত {ayah.ayahNumber} শুনুন</Text>
+            <Text style={styles.listenLabel}>আয়াত {ayah.ayahNumber} শুনুন</Text>
           </View>
         </View>
       ))}
@@ -94,60 +160,131 @@ export default function QuranScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  surahHeader: {
-    paddingVertical: spacing.lg,
-    borderTopColor: colors.line,
-    borderBottomColor: colors.line,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  surahTitle: {
-    flex: 1,
-    color: colors.ink,
-    fontFamily: typography.bengaliMedium,
-    fontSize: 18,
-  },
-  meta: {
-    color: colors.muted,
-    fontFamily: typography.bengali,
-    fontSize: 13,
-  },
-  offlineNote: {
-    marginTop: spacing.lg,
-    padding: spacing.md,
-    borderRadius: radius.md,
-    backgroundColor: colors.mint,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  offlineText: {
-    flex: 1,
-    color: colors.ink,
-    fontFamily: typography.bengali,
-    fontSize: 12,
-    lineHeight: 19,
-  },
-  audioRow: {
-    minHeight: 56,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-  },
-  listenLabel: {
-    color: colors.primary,
-    fontFamily: typography.bengaliMedium,
-    fontSize: 13,
-  },
-  attribution: {
-    color: colors.muted,
-    fontFamily: typography.bengali,
-    fontSize: 11,
-    lineHeight: 18,
-    marginTop: spacing.xl,
-  },
-});
+function createStyles(colors: ColorPalette) {
+  return {
+    list: {
+      marginTop: spacing.md,
+    },
+    listRow: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: spacing.md,
+      paddingVertical: spacing.md,
+      borderBottomColor: colors.line,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+    },
+    listRowPressed: {
+      opacity: 0.7,
+    },
+    listNumber: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: colors.mint,
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+    },
+    listNumberText: {
+      color: colors.primary,
+      fontFamily: typography.bengaliMedium,
+      fontSize: 13,
+    },
+    listCopy: {
+      flex: 1,
+    },
+    listTitle: {
+      color: colors.ink,
+      fontFamily: typography.bengaliMedium,
+      fontSize: 15,
+    },
+    listMeta: {
+      color: colors.muted,
+      fontFamily: typography.bengali,
+      fontSize: 12,
+      marginTop: 2,
+    },
+    backRow: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: spacing.xs,
+      paddingVertical: spacing.sm,
+    },
+    backLabel: {
+      color: colors.primary,
+      fontFamily: typography.bengaliMedium,
+      fontSize: 14,
+    },
+    surahHeader: {
+      paddingVertical: spacing.lg,
+      borderTopColor: colors.line,
+      borderBottomColor: colors.line,
+      borderTopWidth: 1,
+      borderBottomWidth: 1,
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      justifyContent: 'space-between' as const,
+      gap: spacing.md,
+    },
+    surahTitle: {
+      flex: 1,
+      color: colors.ink,
+      fontFamily: typography.bengaliMedium,
+      fontSize: 18,
+    },
+    meta: {
+      color: colors.muted,
+      fontFamily: typography.bengali,
+      fontSize: 13,
+    },
+    offlineNote: {
+      marginTop: spacing.lg,
+      padding: spacing.md,
+      borderRadius: radius.md,
+      backgroundColor: colors.mint,
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: spacing.sm,
+    },
+    offlineText: {
+      flex: 1,
+      color: colors.ink,
+      fontFamily: typography.bengali,
+      fontSize: 12,
+      lineHeight: 19,
+    },
+    warningNote: {
+      marginTop: spacing.sm,
+      padding: spacing.md,
+      borderRadius: radius.md,
+      backgroundColor: colors.paleGold,
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: spacing.sm,
+    },
+    warningText: {
+      flex: 1,
+      color: colors.ink,
+      fontFamily: typography.bengali,
+      fontSize: 12,
+      lineHeight: 19,
+    },
+    audioRow: {
+      minHeight: 56,
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: spacing.md,
+    },
+    listenLabel: {
+      color: colors.primary,
+      fontFamily: typography.bengaliMedium,
+      fontSize: 13,
+    },
+    attribution: {
+      color: colors.muted,
+      fontFamily: typography.bengali,
+      fontSize: 11,
+      lineHeight: 18,
+      marginTop: spacing.xl,
+    },
+  };
+}

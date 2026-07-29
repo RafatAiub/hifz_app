@@ -10,14 +10,18 @@ import {
 } from 'react';
 
 import { quranDemoPack } from '@/data/quran-pack';
-import { buildDailyPlan, nextReviewDate } from '@/domain/planner';
+import { buildDailyPlan, scheduleNextReview } from '@/domain/planner';
+import { computeMilestones, computeStreak, computeSurahProgress } from '@/domain/stats';
 import type {
   AyahKey,
   MemoryState,
+  Milestone,
   RecallRating,
   SessionEvent,
   SessionPlan,
+  StreakState,
   StudentProfile,
+  SurahProgress,
 } from '@/domain/types';
 import { createStorageRepository } from '@/storage/create-repository';
 import type { StorageRepository } from '@/storage/repository';
@@ -26,6 +30,9 @@ interface AppStats {
   completedSessions: number;
   memorizedAyahs: number;
   reviewStrength: number;
+  streak: StreakState;
+  surahProgress: SurahProgress[];
+  milestones: Milestone[];
 }
 
 interface AppContextValue {
@@ -35,6 +42,8 @@ interface AppContextValue {
   stats: AppStats;
   repository: StorageRepository;
   setAvailableMinutes(minutes: number): Promise<void>;
+  setThemePreference(preference: StudentProfile['themePreference']): Promise<void>;
+  setSurahMemorized(surahNumber: number, memorized: boolean): Promise<void>;
   refreshPlan(minutes?: number): void;
   completeSession(input: {
     rating: RecallRating;
@@ -58,6 +67,7 @@ function makeDefaultProfile(now: Date): StudentProfile {
     memorizedAyahKeys: [],
     recoveryPreference: 'gentle',
     mushafLayout: 'indopak-13',
+    themePreference: 'system',
     lastActiveAt: null,
     createdAt: iso,
     updatedAt: iso,
@@ -138,6 +148,51 @@ export function AppProvider({ children }: PropsWithChildren) {
     [memoryStates, profile],
   );
 
+  const setThemePreference = useCallback(
+    async (preference: StudentProfile['themePreference']) => {
+      if (!profile) return;
+      const nextProfile = {
+        ...profile,
+        themePreference: preference,
+        updatedAt: new Date().toISOString(),
+      };
+      await repository.saveProfile(nextProfile);
+      setProfile(nextProfile);
+    },
+    [profile],
+  );
+
+  const setSurahMemorized = useCallback(
+    async (surahNumber: number, memorized: boolean) => {
+      if (!profile) return;
+      const surahAyahKeys = quranDemoPack.ayahs
+        .filter((ayah) => ayah.surahNumber === surahNumber)
+        .map((ayah) => ayah.key);
+      const memorizedSet = new Set(profile.memorizedAyahKeys);
+      if (memorized) {
+        surahAyahKeys.forEach((key) => memorizedSet.add(key));
+      } else {
+        surahAyahKeys.forEach((key) => memorizedSet.delete(key));
+      }
+      const nextProfile: StudentProfile = {
+        ...profile,
+        memorizedAyahKeys: Array.from(memorizedSet),
+        updatedAt: new Date().toISOString(),
+      };
+      await repository.saveProfile(nextProfile);
+      setProfile(nextProfile);
+      setPlan(
+        buildDailyPlan({
+          profile: nextProfile,
+          memoryStates,
+          contentPack: quranDemoPack,
+          now: new Date(),
+        }),
+      );
+    },
+    [memoryStates, profile],
+  );
+
   const completeSession = useCallback(
     async ({
       rating,
@@ -197,17 +252,23 @@ export function AppProvider({ children }: PropsWithChildren) {
       const byKey = new Map(memoryStates.map((state) => [state.ayahKey, state]));
       completedAyahKeys.forEach((ayahKey) => {
         const current = byKey.get(ayahKey);
+        const schedule = scheduleNextReview(current, rating, now);
         byKey.set(ayahKey, {
           ayahKey,
           strength: strengthFromRating(rating),
           lastReviewedAt: now.toISOString(),
-          nextDueAt: nextReviewDate(rating, now),
+          nextDueAt: schedule.nextDueAt,
           hesitationCount: (current?.hesitationCount ?? 0) + (rating === 'hard' ? 1 : 0),
           hintCount: (current?.hintCount ?? 0) + hints,
           successfulRecalls:
             (current?.successfulRecalls ?? 0) + (rating === 'again' ? 0 : 1),
           failedRecalls:
             (current?.failedRecalls ?? 0) + (rating === 'again' ? 1 : 0),
+          easeFactor: schedule.easeFactor,
+          intervalDays: schedule.intervalDays,
+          repetitionCount: schedule.repetitionCount,
+          consecutiveAgainCount: schedule.consecutiveAgainCount,
+          isLeech: schedule.isLeech,
         });
       });
       const nextStates = Array.from(byKey.values());
@@ -239,12 +300,19 @@ export function AppProvider({ children }: PropsWithChildren) {
               memoryStates.length) *
               100,
           );
+    const memorizedAyahKeys = profile?.memorizedAyahKeys ?? [];
+    const streak = computeStreak(events);
+    const surahProgress = computeSurahProgress(memorizedAyahKeys, quranDemoPack);
+    const milestones = computeMilestones(events, memorizedAyahKeys, quranDemoPack, streak);
     return {
       completedSessions: events.length,
-      memorizedAyahs: profile?.memorizedAyahKeys.length ?? 0,
+      memorizedAyahs: memorizedAyahKeys.length,
       reviewStrength: strength,
+      streak,
+      surahProgress,
+      milestones,
     };
-  }, [events.length, memoryStates, profile?.memorizedAyahKeys.length]);
+  }, [events, memoryStates, profile?.memorizedAyahKeys]);
 
   const value = useMemo<AppContextValue>(
     () => ({
@@ -254,6 +322,8 @@ export function AppProvider({ children }: PropsWithChildren) {
       stats,
       repository,
       setAvailableMinutes,
+      setThemePreference,
+      setSurahMemorized,
       refreshPlan,
       completeSession,
     }),
@@ -264,6 +334,8 @@ export function AppProvider({ children }: PropsWithChildren) {
       ready,
       refreshPlan,
       setAvailableMinutes,
+      setThemePreference,
+      setSurahMemorized,
       stats,
     ],
   );

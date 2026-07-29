@@ -9,6 +9,7 @@ export interface StudentProfile {
   memorizedAyahKeys: AyahKey[];
   recoveryPreference: 'gentle' | 'strict';
   mushafLayout: 'indopak-13';
+  themePreference: 'system' | 'light' | 'dark';
   lastActiveAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -24,6 +25,7 @@ export interface QuranAyah {
   arabic: string;
   translationBn: string;
   audioUrl: string;
+  lineDataVerified: boolean;
 }
 
 export interface QuranContentPack {
@@ -51,6 +53,11 @@ export interface MemoryState {
   hintCount: number;
   successfulRecalls: number;
   failedRecalls: number;
+  easeFactor: number;
+  intervalDays: number;
+  repetitionCount: number;
+  consecutiveAgainCount: number;
+  isLeech: boolean;
 }
 
 export type SessionStepKind = 'warmup' | 'new' | 'sabqi' | 'manzil';
@@ -62,6 +69,7 @@ export interface SessionStep {
   ayahKeys: AyahKey[];
   estimatedMinutes: number;
   repetitionTarget: number;
+  hasLeechItems: boolean;
 }
 
 export interface SessionPlan {
@@ -95,4 +103,30 @@ export interface SessionEvent {
   occurredAt: string;
   payload: SessionResult;
   syncState: 'pending' | 'synced';
+}
+
+export interface StreakState {
+  currentStreak: number;
+  longestStreak: number;
+  lastCompletedDate: string | null;
+}
+
+export type MilestoneKind =
+  | 'surah-complete'
+  | 'streak'
+  | 'ayah-count';
+
+export interface Milestone {
+  id: string;
+  kind: MilestoneKind;
+  titleBn: string;
+  achievedAt: string;
+}
+
+export interface SurahProgress {
+  surahNumber: number;
+  nameBn: string;
+  nameArabic: string;
+  memorizedCount: number;
+  totalCount: number;
 }

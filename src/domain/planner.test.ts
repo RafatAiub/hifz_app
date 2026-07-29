@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { quranDemoPack } from '@/data/quran-pack';
-import { buildDailyPlan } from '@/domain/planner';
+import { buildDailyPlan, scheduleNextReview } from '@/domain/planner';
 import type { MemoryState, StudentProfile } from '@/domain/types';
 
 function profile(overrides: Partial<StudentProfile> = {}): StudentProfile {
@@ -14,6 +14,7 @@ function profile(overrides: Partial<StudentProfile> = {}): StudentProfile {
     memorizedAyahKeys: [],
     recoveryPreference: 'gentle',
     mushafLayout: 'indopak-13',
+    themePreference: 'system',
     lastActiveAt: null,
     createdAt: '2026-07-01T00:00:00.000Z',
     updatedAt: '2026-07-01T00:00:00.000Z',
@@ -31,6 +32,11 @@ function dueStates(count: number, strength = 0.3): MemoryState[] {
     hintCount: 0,
     successfulRecalls: 1,
     failedRecalls: 0,
+    easeFactor: 2.5,
+    intervalDays: 1,
+    repetitionCount: 1,
+    consecutiveAgainCount: 0,
+    isLeech: false,
   }));
 }
 
@@ -81,5 +87,65 @@ describe('buildDailyPlan', () => {
       now,
     });
     expect(result.steps[0]?.ayahKeys[0]).toBe(states[2]!.ayahKey);
+  });
+
+  it('surfaces leech items ahead of other due items', () => {
+    const states = dueStates(3);
+    states[2]!.isLeech = true;
+    states[2]!.strength = 0.9;
+    const result = buildDailyPlan({
+      profile: profile(),
+      memoryStates: states,
+      contentPack: quranDemoPack,
+      now,
+    });
+    expect(result.steps[0]?.ayahKeys[0]).toBe(states[2]!.ayahKey);
+    expect(result.steps.some((step) => step.hasLeechItems)).toBe(true);
+  });
+});
+
+describe('scheduleNextReview', () => {
+  const now = new Date('2026-07-28T06:00:00.000Z');
+
+  it('grows the interval and ease across consecutive good ratings', () => {
+    const first = scheduleNextReview(undefined, 'good', now);
+    expect(first.intervalDays).toBe(1);
+    expect(first.repetitionCount).toBe(1);
+
+    const second = scheduleNextReview(
+      { easeFactor: first.easeFactor, intervalDays: first.intervalDays, repetitionCount: first.repetitionCount, consecutiveAgainCount: 0 },
+      'good',
+      now,
+    );
+    expect(second.intervalDays).toBe(3);
+
+    const third = scheduleNextReview(
+      { easeFactor: second.easeFactor, intervalDays: second.intervalDays, repetitionCount: second.repetitionCount, consecutiveAgainCount: 0 },
+      'good',
+      now,
+    );
+    expect(third.intervalDays).toBeGreaterThan(second.intervalDays);
+  });
+
+  it('resets to a short interval on again and lowers ease', () => {
+    const warm = scheduleNextReview(
+      { easeFactor: 2.5, intervalDays: 6, repetitionCount: 3, consecutiveAgainCount: 0 },
+      'again',
+      now,
+    );
+    expect(warm.intervalDays).toBe(1);
+    expect(warm.repetitionCount).toBe(0);
+    expect(warm.easeFactor).toBeLessThan(2.5);
+  });
+
+  it('marks an item as a leech after repeated again ratings', () => {
+    let state: Parameters<typeof scheduleNextReview>[0] = undefined;
+    let result = scheduleNextReview(state, 'again', now);
+    for (let i = 0; i < 3; i += 1) {
+      state = result;
+      result = scheduleNextReview(state, 'again', now);
+    }
+    expect(result.consecutiveAgainCount).toBe(4);
+    expect(result.isLeech).toBe(true);
   });
 });

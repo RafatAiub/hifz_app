@@ -3,15 +3,16 @@ import {
   ActivityIndicator,
   Pressable,
   ScrollView,
-  StyleSheet,
   Text,
   View,
   type ScrollViewProps,
 } from 'react-native';
 import { ArrowLeft } from 'lucide-react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { colors, radius, spacing, typography } from '@/theme/tokens';
+import { useThemedStyles } from '@/theme/create-styles';
+import { useThemeColors } from '@/theme/theme-context';
+import { radius, spacing, typography, type ColorPalette } from '@/theme/tokens';
 
 export function AppScreen({
   children,
@@ -20,13 +21,19 @@ export function AppScreen({
   action,
   scroll = true,
   contentStyle,
+  hasTabBar = true,
 }: PropsWithChildren<{
   title?: string;
   eyebrow?: string;
   action?: ReactNode;
   scroll?: boolean;
   contentStyle?: ScrollViewProps['contentContainerStyle'];
+  hasTabBar?: boolean;
 }>) {
+  const styles = useThemedStyles(createUiStyles);
+  const insets = useSafeAreaInsets();
+  const bottomPadding = insets.bottom + (hasTabBar ? 88 : spacing.xl);
+
   const heading = title ? (
     <View style={styles.heading}>
       <View style={styles.headingCopy}>
@@ -41,7 +48,11 @@ export function AppScreen({
     <SafeAreaView edges={['top']} style={styles.safe}>
       {scroll ? (
         <ScrollView
-          contentContainerStyle={[styles.content, contentStyle]}
+          contentContainerStyle={[
+            styles.content,
+            { paddingBottom: bottomPadding },
+            contentStyle,
+          ]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
@@ -49,7 +60,14 @@ export function AppScreen({
           {children}
         </ScrollView>
       ) : (
-        <View style={[styles.content, styles.flex, contentStyle]}>
+        <View
+          style={[
+            styles.content,
+            styles.flex,
+            { paddingBottom: bottomPadding },
+            contentStyle,
+          ]}
+        >
           {heading}
           {children}
         </View>
@@ -72,6 +90,8 @@ export function ActionButton({
   loading?: boolean;
   tone?: 'primary' | 'quiet' | 'danger';
 }) {
+  const colors = useThemeColors();
+  const styles = useThemedStyles(createUiStyles);
   const foreground = tone === 'quiet' ? colors.primary : colors.white;
   return (
     <Pressable
@@ -113,6 +133,7 @@ export function IconAction({
   label: string;
   selected?: boolean;
 }) {
+  const styles = useThemedStyles(createUiStyles);
   return (
     <Pressable
       accessibilityLabel={label}
@@ -130,90 +151,91 @@ export function IconAction({
   );
 }
 
-const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: colors.canvas,
-  },
-  flex: {
-    flex: 1,
-  },
-  content: {
-    width: '100%',
-    maxWidth: 720,
-    alignSelf: 'center',
-    paddingHorizontal: spacing.lg,
-    paddingBottom: 112,
-  },
-  heading: {
-    minHeight: 76,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.md,
-  },
-  headingCopy: {
-    flex: 1,
-  },
-  eyebrow: {
-    color: colors.primary,
-    fontFamily: typography.bengaliMedium,
-    fontSize: 12,
-  },
-  title: {
-    color: colors.ink,
-    fontFamily: typography.bengaliMedium,
-    fontSize: 25,
-    lineHeight: 34,
-  },
-  button: {
-    minHeight: 56,
-    width: '100%',
-    paddingHorizontal: spacing.lg,
-    borderRadius: radius.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.sm,
-  },
-  primary: {
-    backgroundColor: colors.primary,
-  },
-  quiet: {
-    backgroundColor: colors.mint,
-    borderColor: colors.primary,
-    borderWidth: 1,
-  },
-  danger: {
-    backgroundColor: colors.coral,
-  },
-  pressed: {
-    opacity: 0.82,
-    transform: [{ scale: 0.99 }],
-  },
-  disabled: {
-    opacity: 0.48,
-  },
-  label: {
-    color: colors.white,
-    fontFamily: typography.bengaliMedium,
-    fontSize: 16,
-  },
-  quietLabel: {
-    color: colors.primary,
-  },
-  iconButton: {
-    width: 44,
-    height: 44,
-    borderRadius: radius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.surface,
-    borderColor: colors.line,
-    borderWidth: 1,
-  },
-  selectedIcon: {
-    backgroundColor: colors.mint,
-    borderColor: colors.primary,
-  },
-});
+function createUiStyles(colors: ColorPalette) {
+  return {
+    safe: {
+      flex: 1,
+      backgroundColor: colors.canvas,
+    },
+    flex: {
+      flex: 1,
+    },
+    content: {
+      width: '100%' as const,
+      maxWidth: 720,
+      alignSelf: 'center' as const,
+      paddingHorizontal: spacing.lg,
+    },
+    heading: {
+      minHeight: 76,
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      justifyContent: 'space-between' as const,
+      gap: spacing.md,
+    },
+    headingCopy: {
+      flex: 1,
+    },
+    eyebrow: {
+      color: colors.primary,
+      fontFamily: typography.bengaliMedium,
+      fontSize: 12,
+    },
+    title: {
+      color: colors.ink,
+      fontFamily: typography.bengaliMedium,
+      fontSize: 25,
+      lineHeight: 34,
+    },
+    button: {
+      minHeight: 56,
+      width: '100%' as const,
+      paddingHorizontal: spacing.lg,
+      borderRadius: radius.md,
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+      gap: spacing.sm,
+    },
+    primary: {
+      backgroundColor: colors.primary,
+    },
+    quiet: {
+      backgroundColor: colors.mint,
+      borderColor: colors.primary,
+      borderWidth: 1,
+    },
+    danger: {
+      backgroundColor: colors.coral,
+    },
+    pressed: {
+      opacity: 0.82,
+      transform: [{ scale: 0.99 }],
+    },
+    disabled: {
+      opacity: 0.48,
+    },
+    label: {
+      color: colors.white,
+      fontFamily: typography.bengaliMedium,
+      fontSize: 16,
+    },
+    quietLabel: {
+      color: colors.primary,
+    },
+    iconButton: {
+      width: 44,
+      height: 44,
+      borderRadius: radius.md,
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+      backgroundColor: colors.surface,
+      borderColor: colors.line,
+      borderWidth: 1,
+    },
+    selectedIcon: {
+      backgroundColor: colors.mint,
+      borderColor: colors.primary,
+    },
+  };
+}

@@ -2,6 +2,7 @@ import type {
   AyahKey,
   MemoryState,
   QuranContentPack,
+  RecallRating,
   SessionPlan,
   SessionStep,
   StudentProfile,
@@ -23,6 +24,7 @@ function makeStep(
   ayahKeys: AyahKey[],
   estimatedMinutes: number,
   repetitionTarget: number,
+  leechKeys: Set<AyahKey>,
 ): SessionStep {
   return {
     id: `${kind}-${ayahKeys.join('-') || 'none'}`,
@@ -31,6 +33,7 @@ function makeStep(
     ayahKeys,
     estimatedMinutes,
     repetitionTarget,
+    hasLeechItems: ayahKeys.some((key) => leechKeys.has(key)),
   };
 }
 
@@ -44,17 +47,23 @@ export function buildDailyPlan({
   const budget = Math.max(5, Math.min(60, availableMinutes));
   const due = memoryStates
     .filter((state) => new Date(state.nextDueAt).getTime() <= now.getTime())
-    .sort((a, b) => a.strength - b.strength);
+    .sort((a, b) => {
+      if (a.isLeech !== b.isLeech) return a.isLeech ? -1 : 1;
+      return a.strength - b.strength;
+    });
   const lastActive = profile.lastActiveAt
     ? new Date(profile.lastActiveAt).getTime()
     : now.getTime();
   const missedDays = Math.max(0, Math.floor((now.getTime() - lastActive) / DAY_MS) - 1);
   const isRecoveryPlan = missedDays >= 2 || due.length >= 6;
   const steps: SessionStep[] = [];
+  const leechKeys = new Set(
+    memoryStates.filter((state) => state.isLeech).map((state) => state.ayahKey),
+  );
 
   const warmup = due.slice(0, 1).map((state) => state.ayahKey);
   if (warmup.length > 0) {
-    steps.push(makeStep('warmup', 'শান্তভাবে শুরু', warmup, Math.min(3, budget), 2));
+    steps.push(makeStep('warmup', 'শান্তভাবে শুরু', warmup, Math.min(3, budget), 2, leechKeys));
   }
 
   const reviewBudget = isRecoveryPlan ? Math.ceil(budget * 0.75) : Math.ceil(budget * 0.45);
@@ -65,9 +74,13 @@ export function buildDailyPlan({
   if (reviewKeys.length > 0) {
     const recentKeys = reviewKeys.slice(0, Math.ceil(reviewKeys.length / 2));
     const olderKeys = reviewKeys.slice(recentKeys.length);
-    steps.push(makeStep('sabqi', 'সাম্প্রতিক অংশ ঝালাই', recentKeys, recentKeys.length * 3, 2));
+    steps.push(
+      makeStep('sabqi', 'সাম্প্রতিক অংশ ঝালাই', recentKeys, recentKeys.length * 3, 2, leechKeys),
+    );
     if (olderKeys.length > 0) {
-      steps.push(makeStep('manzil', 'পুরোনো অংশ শক্ত করুন', olderKeys, olderKeys.length * 3, 1));
+      steps.push(
+        makeStep('manzil', 'পুরোনো অংশ শক্ত করুন', olderKeys, olderKeys.length * 3, 1, leechKeys),
+      );
     }
   }
 
@@ -87,13 +100,13 @@ export function buildDailyPlan({
       .map((ayah) => ayah.key);
 
     if (newKeys.length > 0) {
-      steps.push(makeStep('new', 'আজকের নতুন হিফজ', newKeys, newMinutes, 5));
+      steps.push(makeStep('new', 'আজকের নতুন হিফজ', newKeys, newMinutes, 5, leechKeys));
     }
   }
 
   if (steps.length === 0) {
     const fallback = contentPack.ayahs.slice(0, 1).map((ayah) => ayah.key);
-    steps.push(makeStep('new', 'আজকের ছোট শুরু', fallback, budget, 5));
+    steps.push(makeStep('new', 'আজকের ছোট শুরু', fallback, budget, 5, leechKeys));
   }
 
   return {
@@ -106,10 +119,87 @@ export function buildDailyPlan({
   };
 }
 
-export function nextReviewDate(
-  rating: 'again' | 'hard' | 'good' | 'easy',
+const MIN_EASE_FACTOR = 1.3;
+const MAX_EASE_FACTOR = 3.2;
+const DEFAULT_EASE_FACTOR = 2.5;
+const LEECH_THRESHOLD = 4;
+
+const EASE_DELTA: Record<RecallRating, number> = {
+  again: -0.3,
+  hard: -0.15,
+  good: 0,
+  easy: 0.15,
+};
+
+const INTERVAL_MULTIPLIER: Record<RecallRating, number> = {
+  again: 1,
+  hard: 0.8,
+  good: 1,
+  easy: 1.3,
+};
+
+export interface ScheduleResult {
+  easeFactor: number;
+  intervalDays: number;
+  nextDueAt: string;
+  repetitionCount: number;
+  consecutiveAgainCount: number;
+  isLeech: boolean;
+}
+
+/**
+ * SM-2 derived scheduler: ease factor shifts per rating, interval grows
+ * multiplicatively once past the initial learning steps, and `again`
+ * resets the item to a short interval instead of erasing history.
+ */
+export function scheduleNextReview(
+  state: Pick<
+    MemoryState,
+    'easeFactor' | 'intervalDays' | 'repetitionCount' | 'consecutiveAgainCount'
+  > | undefined,
+  rating: RecallRating,
   now: Date,
-) {
-  const intervalDays = { again: 1, hard: 2, good: 4, easy: 7 }[rating];
-  return new Date(now.getTime() + intervalDays * DAY_MS).toISOString();
+): ScheduleResult {
+  const easeFactor = state?.easeFactor ?? DEFAULT_EASE_FACTOR;
+  const previousInterval = state?.intervalDays ?? 0;
+  const previousRepetitions = state?.repetitionCount ?? 0;
+
+  if (rating === 'again') {
+    const nextEase = Math.max(MIN_EASE_FACTOR, easeFactor + EASE_DELTA.again);
+    const consecutiveAgainCount = (state?.consecutiveAgainCount ?? 0) + 1;
+    return {
+      easeFactor: nextEase,
+      intervalDays: 1,
+      nextDueAt: new Date(now.getTime() + DAY_MS).toISOString(),
+      repetitionCount: 0,
+      consecutiveAgainCount,
+      isLeech: consecutiveAgainCount >= LEECH_THRESHOLD,
+    };
+  }
+
+  const nextEase = Math.min(
+    MAX_EASE_FACTOR,
+    Math.max(MIN_EASE_FACTOR, easeFactor + EASE_DELTA[rating]),
+  );
+  const repetitionCount = previousRepetitions + 1;
+
+  let intervalDays: number;
+  if (repetitionCount === 1) {
+    intervalDays = 1;
+  } else if (repetitionCount === 2) {
+    intervalDays = rating === 'hard' ? 2 : rating === 'easy' ? 4 : 3;
+  } else {
+    intervalDays = Math.round(
+      Math.max(1, previousInterval) * nextEase * INTERVAL_MULTIPLIER[rating],
+    );
+  }
+
+  return {
+    easeFactor: nextEase,
+    intervalDays,
+    nextDueAt: new Date(now.getTime() + intervalDays * DAY_MS).toISOString(),
+    repetitionCount,
+    consecutiveAgainCount: 0,
+    isLeech: false,
+  };
 }

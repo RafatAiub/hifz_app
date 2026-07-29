@@ -1,9 +1,14 @@
 import { Tabs } from 'expo-router';
 import { BookOpen, ChartNoAxesColumn, House } from 'lucide-react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { colors, typography } from '@/theme/tokens';
+import { useThemeColors } from '@/theme/theme-context';
+import { typography } from '@/theme/tokens';
 
 export default function TabsLayout() {
+  const colors = useThemeColors();
+  const insets = useSafeAreaInsets();
+
   return (
     <Tabs
       screenOptions={{
@@ -16,8 +21,9 @@ export default function TabsLayout() {
           marginBottom: 4,
         },
         tabBarStyle: {
-          height: 72,
+          height: 72 + insets.bottom,
           paddingTop: 8,
+          paddingBottom: insets.bottom,
           backgroundColor: colors.surface,
           borderTopColor: colors.line,
         },
