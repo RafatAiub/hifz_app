@@ -8,13 +8,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   orientation: 'portrait',
   scheme: 'hifz',
   userInterfaceStyle: 'automatic',
-  newArchEnabled: true,
   icon: './assets/icon.png',
-  splash: {
-    image: './assets/splash.png',
-    resizeMode: 'contain',
-    backgroundColor: '#F7FAF7',
-  },
   android: {
     package: 'app.hifz.autopilot',
     permissions: ['RECORD_AUDIO', 'VIBRATE'],
@@ -34,6 +28,15 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   },
   plugins: [
     'expo-router',
+    'expo-asset',
+    [
+      'expo-splash-screen',
+      {
+        image: './assets/splash.png',
+        resizeMode: 'contain',
+        backgroundColor: '#F7FAF7',
+      },
+    ],
     [
       'expo-audio',
       {
