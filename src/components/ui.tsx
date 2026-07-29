@@ -50,8 +50,8 @@ export function AppScreen({
         <ScrollView
           contentContainerStyle={[
             styles.content,
-            { paddingBottom: bottomPadding },
             contentStyle,
+            { paddingBottom: bottomPadding },
           ]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
@@ -64,8 +64,8 @@ export function AppScreen({
           style={[
             styles.content,
             styles.flex,
-            { paddingBottom: bottomPadding },
             contentStyle,
+            { paddingBottom: bottomPadding },
           ]}
         >
           {heading}

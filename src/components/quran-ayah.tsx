@@ -1,5 +1,6 @@
 import { StyleSheet, Text, View } from 'react-native';
 
+import { TajweedArabicText } from '@/components/tajweed-arabic-text';
 import { useThemedStyles } from '@/theme/create-styles';
 import type { QuranAyah } from '@/domain/types';
 import { radius, spacing, typography, type ColorPalette } from '@/theme/tokens';
@@ -23,9 +24,7 @@ export function QuranAyahRow({
         {hidden ? (
           <View accessibilityLabel="আয়াতটি লুকানো আছে" style={styles.hiddenLine} />
         ) : (
-          <Text selectable style={styles.arabic}>
-            {ayah.arabic}
-          </Text>
+          <TajweedArabicText ayahKey={ayah.key} text={ayah.arabic} style={styles.arabic} />
         )}
         <Text style={styles.translation}>{ayah.translationBn}</Text>
       </View>
@@ -67,9 +66,9 @@ function createStyles(colors: ColorPalette) {
     },
     arabic: {
       color: colors.ink,
-      fontFamily: typography.arabic,
-      fontSize: 31,
-      lineHeight: 55,
+      fontFamily: typography.arabicBold,
+      fontSize: 36,
+      lineHeight: 64,
       textAlign: 'right' as const,
       writingDirection: 'rtl' as const,
     },

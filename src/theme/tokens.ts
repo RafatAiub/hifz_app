@@ -111,4 +111,31 @@ export const typography = {
   bengali: 'NotoSansBengali',
   bengaliMedium: 'NotoSansBengaliMedium',
   arabic: 'NotoNaskhArabic',
+  arabicBold: 'NotoNaskhArabicBold',
 } as const;
+
+/**
+ * Standard tajweed rule colors (source: alquran.cloud's tajweed-guide
+ * legend, cross-checked against the open-source vipafattal/TajweedParser
+ * implementation). Fixed across light/dark theme, matching the convention
+ * used by quran.com and most tajweed-color Quran apps.
+ */
+export const tajweedColors = {
+  hsl: '#AAAAAA',
+  madda_normal: '#537FFF',
+  madda_permissible: '#4050FF',
+  madda_necessary: '#000EBC',
+  madda_obligatory: '#2144C1',
+  qalaqah: '#DD0008',
+  ikhafa_shafawi: '#D500B7',
+  ikhafa: '#9400A8',
+  idgham_shafawi: '#58B800',
+  iqlab: '#26BFFD',
+  idgham_ghunnah: '#169777',
+  idgham_no_ghunnah: '#169200',
+  idgham_mutajanisayn: '#A1A1A1',
+  idgham_mutaqaribayn: '#A1A1A1',
+  ghunnah: '#FF7E1E',
+} as const;
+
+export type TajweedRule = keyof typeof tajweedColors;

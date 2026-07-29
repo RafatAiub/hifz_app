@@ -1,5 +1,6 @@
 import {
   NotoNaskhArabic_400Regular,
+  NotoNaskhArabic_700Bold,
   useFonts as useArabicFonts,
 } from '@expo-google-fonts/noto-naskh-arabic';
 import {
@@ -48,6 +49,7 @@ export default function RootLayout() {
   });
   const [arabicLoaded] = useArabicFonts({
     NotoNaskhArabic: NotoNaskhArabic_400Regular,
+    NotoNaskhArabicBold: NotoNaskhArabic_700Bold,
   });
 
   useEffect(() => {

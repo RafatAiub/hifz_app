@@ -3,6 +3,7 @@ import {
   RecordingPresets,
   setAudioModeAsync,
   useAudioPlayer,
+  useAudioPlayerStatus,
   useAudioRecorder,
   useAudioRecorderState,
 } from 'expo-audio';
@@ -85,6 +86,7 @@ export default function SessionScreen() {
     isMeteringEnabled: true,
   });
   const recorderState = useAudioRecorderState(recorder, 100);
+  const playerStatus = useAudioPlayerStatus(player);
   const stage = stages[stageIndex] ?? stages[0];
   const currentAyah = ayahs[ayahIndex] ?? ayahs[0];
   const currentSurah = currentAyah
@@ -102,6 +104,13 @@ export default function SessionScreen() {
   useEffect(() => {
     player.setPlaybackRate(playbackRate);
   }, [player, playbackRate]);
+
+  useEffect(() => {
+    if (stage.key !== 'listen' || !playerStatus.didJustFinish) return;
+    const timer = setTimeout(() => moveAyah(), 900);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playerStatus.didJustFinish, stage.key]);
 
   async function playAyah() {
     if (!currentAyah) return;
@@ -190,7 +199,6 @@ export default function SessionScreen() {
     <AppScreen
       scroll={false}
       hasTabBar={false}
-      contentStyle={styles.screen}
       title={stage.title}
       eyebrow={`${stageIndex + 1}/${stages.length} · ${stage.hint}`}
       action={
@@ -438,9 +446,6 @@ export default function SessionScreen() {
 
 function createStyles(colors: ColorPalette) {
   return {
-    screen: {
-      paddingBottom: spacing.lg,
-    },
     center: {
       flex: 1,
       alignItems: 'center' as const,
