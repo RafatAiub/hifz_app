@@ -1,4 +1,4 @@
-import { Award, BookOpenCheck, CircleGauge, Layers3, Medal } from 'lucide-react-native';
+import { Award, BookOpenCheck, CircleGauge, Gauge, Layers3, Medal } from 'lucide-react-native';
 import type { ReactNode } from 'react';
 import { Text, View } from 'react-native';
 
@@ -57,6 +57,34 @@ export default function ProgressScreen() {
             সবচেয়ে ভালো মনে থাকে। প্রতিটি session-এর পর plan নিজে বদলাবে।
           </Text>
         </View>
+      </View>
+
+      <View style={styles.section}>
+        <View style={styles.velocityHeader}>
+          <Gauge color={colors.primary} size={20} />
+          <Text style={styles.sectionTitleInline}>হিফজের গতি</Text>
+        </View>
+        <Text style={styles.body}>
+          {stats.velocity.ayahsPerDay > 0
+            ? `গত ${stats.velocity.windowDays} দিনে দিনে গড়ে ${stats.velocity.ayahsPerDay.toFixed(1)}টি নতুন আয়াত মুখস্থ হচ্ছে।`
+            : `এখনো গতি হিসাব করার মতো যথেষ্ট নতুন হিফজ হয়নি। আরও কিছু session শেষ করলে এখানে দেখা যাবে।`}
+        </Text>
+        {stats.surahForecasts.length > 0 ? (
+          <View style={styles.forecastList}>
+            {stats.surahForecasts.map((forecast) => (
+              <View key={forecast.surahNumber} style={styles.forecastRow}>
+                <Text style={styles.forecastSurah} numberOfLines={1}>
+                  সূরা {forecast.nameBn}
+                </Text>
+                <Text style={styles.forecastValue}>
+                  {forecast.daysLeft !== null
+                    ? `আর ${forecast.daysLeft} দিন বাকি`
+                    : `${forecast.remainingAyahs}টি আয়াত বাকি`}
+                </Text>
+              </View>
+            ))}
+          </View>
+        ) : null}
       </View>
 
       <View style={styles.section}>
@@ -183,6 +211,42 @@ function createStyles(colors: ColorPalette) {
       fontFamily: typography.bengaliMedium,
       fontSize: 18,
       marginBottom: spacing.sm,
+    },
+    velocityHeader: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: spacing.sm,
+      marginBottom: spacing.sm,
+    },
+    sectionTitleInline: {
+      color: colors.ink,
+      fontFamily: typography.bengaliMedium,
+      fontSize: 18,
+    },
+    forecastList: {
+      marginTop: spacing.md,
+      gap: spacing.sm,
+    },
+    forecastRow: {
+      flexDirection: 'row' as const,
+      justifyContent: 'space-between' as const,
+      alignItems: 'center' as const,
+      padding: spacing.md,
+      borderRadius: radius.md,
+      backgroundColor: colors.surface,
+      borderColor: colors.line,
+      borderWidth: 1,
+    },
+    forecastSurah: {
+      flex: 1,
+      color: colors.ink,
+      fontFamily: typography.bengali,
+      fontSize: 13,
+    },
+    forecastValue: {
+      color: colors.primary,
+      fontFamily: typography.bengaliMedium,
+      fontSize: 13,
     },
     body: {
       flex: 1,

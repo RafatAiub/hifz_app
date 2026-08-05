@@ -18,8 +18,23 @@ import { useThemedStyles } from '@/theme/create-styles';
 import { useThemeColors, useThemeMode } from '@/theme/theme-context';
 import { radius, spacing, typography, type ColorPalette } from '@/theme/tokens';
 
+const ARABIC_SCALES = [
+  [0.8, 'ছোট'],
+  [1, 'স্বাভাবিক'],
+  [1.2, 'বড়'],
+  [1.4, 'অতিরিক্ত বড়'],
+] as const;
+
 export default function SettingsScreen() {
-  const { profile, setAvailableMinutes, setSurahMemorized, repository } = useApp();
+  const {
+    profile,
+    setAvailableMinutes,
+    setArabicTextScale,
+    setArabicFont,
+    setUiFont,
+    setSurahMemorized,
+    repository,
+  } = useApp();
   const colors = useThemeColors();
   const styles = useThemedStyles(createStyles);
   const { preference, setPreference } = useThemeMode();
@@ -125,6 +140,110 @@ export default function SettingsScreen() {
               style={[
                 styles.choiceText,
                 preference === value && styles.choiceTextSelected,
+              ]}
+            >
+              {label}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+
+      <Text style={styles.sectionTitle}>আরবি লেখার আকার</Text>
+      <View style={styles.choices}>
+        {ARABIC_SCALES.map(([value, label]) => (
+          <Pressable
+            key={value}
+            accessibilityRole="radio"
+            accessibilityState={{
+              checked: (profile?.arabicTextScale ?? 1) === value,
+            }}
+            onPress={() => void setArabicTextScale(value)}
+            style={[
+              styles.choice,
+              styles.arabicChoice,
+              (profile?.arabicTextScale ?? 1) === value && styles.choiceSelected,
+            ]}
+          >
+            <Text
+              style={[
+                styles.arabicScalePreview,
+                (profile?.arabicTextScale ?? 1) === value && styles.choiceTextSelected,
+              ]}
+            >
+              أَ
+            </Text>
+            <Text
+              style={[
+                styles.choiceCaption,
+                (profile?.arabicTextScale ?? 1) === value && styles.choiceTextSelected,
+              ]}
+            >
+              {label}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+
+      <Text style={styles.sectionTitle}>আরবি হরফের ধরন</Text>
+      <View style={styles.choices}>
+        {(
+          [
+            ['naskh', 'نسخ', 'নাসখ'],
+            ['amiri', 'أميري', 'আমিরি'],
+          ] as const
+        ).map(([value, arabicLabel, label]) => (
+          <Pressable
+            key={value}
+            accessibilityRole="radio"
+            accessibilityState={{ checked: (profile?.arabicFont ?? 'naskh') === value }}
+            onPress={() => void setArabicFont(value)}
+            style={[
+              styles.choice,
+              styles.arabicChoice,
+              (profile?.arabicFont ?? 'naskh') === value && styles.choiceSelected,
+            ]}
+          >
+            <Text
+              style={[
+                styles.arabicScalePreview,
+                value === 'amiri' && styles.amiriPreview,
+                (profile?.arabicFont ?? 'naskh') === value && styles.choiceTextSelected,
+              ]}
+            >
+              {arabicLabel}
+            </Text>
+            <Text
+              style={[
+                styles.choiceCaption,
+                (profile?.arabicFont ?? 'naskh') === value && styles.choiceTextSelected,
+              ]}
+            >
+              {label}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+
+      <Text style={styles.sectionTitle}>বাংলা লেখার ধরন</Text>
+      <View style={styles.choices}>
+        {(
+          [
+            ['sans', 'সাধারণ'],
+            ['serif', 'ক্লাসিক'],
+          ] as const
+        ).map(([value, label]) => (
+          <Pressable
+            key={value}
+            accessibilityRole="radio"
+            accessibilityState={{ checked: (profile?.uiFont ?? 'sans') === value }}
+            onPress={() => void setUiFont(value)}
+            style={[styles.choice, (profile?.uiFont ?? 'sans') === value && styles.choiceSelected]}
+          >
+            <Text
+              style={[
+                styles.choiceText,
+                value === 'serif' && styles.serifPreview,
+                (profile?.uiFont ?? 'sans') === value && styles.choiceTextSelected,
               ]}
             >
               {label}
@@ -292,6 +411,27 @@ function createStyles(colors: ColorPalette) {
     choiceSelected: {
       backgroundColor: colors.mint,
       borderColor: colors.primary,
+    },
+    arabicChoice: {
+      height: 72,
+      flexDirection: 'column' as const,
+      gap: 2,
+    },
+    arabicScalePreview: {
+      color: colors.ink,
+      fontFamily: typography.arabicBold,
+      fontSize: 22,
+    },
+    amiriPreview: {
+      fontFamily: typography.amiriBold,
+    },
+    serifPreview: {
+      fontFamily: typography.bengaliSerif,
+    },
+    choiceCaption: {
+      color: colors.muted,
+      fontFamily: typography.bengali,
+      fontSize: 11,
     },
     choiceText: {
       color: colors.muted,

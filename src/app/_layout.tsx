@@ -1,13 +1,4 @@
-import {
-  NotoNaskhArabic_400Regular,
-  NotoNaskhArabic_700Bold,
-  useFonts as useArabicFonts,
-} from '@expo-google-fonts/noto-naskh-arabic';
-import {
-  NotoSansBengali_400Regular,
-  NotoSansBengali_500Medium,
-  useFonts as useBengaliFonts,
-} from '@expo-google-fonts/noto-sans-bengali';
+import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
@@ -43,20 +34,21 @@ function ThemedStack() {
 }
 
 export default function RootLayout() {
-  const [bengaliLoaded] = useBengaliFonts({
-    NotoSansBengali: NotoSansBengali_400Regular,
-    NotoSansBengaliMedium: NotoSansBengali_500Medium,
-  });
-  const [arabicLoaded] = useArabicFonts({
-    NotoNaskhArabic: NotoNaskhArabic_400Regular,
-    NotoNaskhArabicBold: NotoNaskhArabic_700Bold,
+  const [fontsLoaded] = useFonts({
+    NotoSansBengali: require('../../assets/fonts/NotoSansBengali-Regular.ttf'),
+    NotoSansBengaliMedium: require('../../assets/fonts/NotoSansBengali-Medium.ttf'),
+    NotoSerifBengali: require('../../assets/fonts/NotoSerifBengali-Regular.ttf'),
+    NotoNaskhArabic: require('../../assets/fonts/NotoNaskhArabic-Regular.ttf'),
+    NotoNaskhArabicBold: require('../../assets/fonts/NotoNaskhArabic-Bold.ttf'),
+    Amiri: require('../../assets/fonts/Amiri-Regular.ttf'),
+    AmiriBold: require('../../assets/fonts/Amiri-Bold.ttf'),
   });
 
   useEffect(() => {
-    if (bengaliLoaded && arabicLoaded) void SplashScreen.hideAsync();
-  }, [arabicLoaded, bengaliLoaded]);
+    if (fontsLoaded) void SplashScreen.hideAsync();
+  }, [fontsLoaded]);
 
-  if (!bengaliLoaded || !arabicLoaded) return null;
+  if (!fontsLoaded) return null;
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>

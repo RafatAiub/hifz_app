@@ -107,12 +107,30 @@ export const radius = {
   full: 999,
 } as const;
 
+export type ArabicFontChoice = 'naskh' | 'amiri';
+export type UiFontChoice = 'sans' | 'serif';
+
 export const typography = {
   bengali: 'NotoSansBengali',
   bengaliMedium: 'NotoSansBengaliMedium',
+  bengaliSerif: 'NotoSerifBengali',
   arabic: 'NotoNaskhArabic',
   arabicBold: 'NotoNaskhArabicBold',
+  amiri: 'Amiri',
+  amiriBold: 'AmiriBold',
 } as const;
+
+/** Resolves the reading-content font families for the user's chosen
+ * Arabic script and Bengali family. UI chrome (buttons, nav, labels)
+ * intentionally stays on the default Sans/Naskh pair for consistent,
+ * predictable layout -- only Quran text and its translation switch. */
+export function resolveTypography(arabicFont: ArabicFontChoice, uiFont: UiFontChoice) {
+  return {
+    arabic: arabicFont === 'amiri' ? typography.amiri : typography.arabic,
+    arabicBold: arabicFont === 'amiri' ? typography.amiriBold : typography.arabicBold,
+    bengali: uiFont === 'serif' ? typography.bengaliSerif : typography.bengali,
+  };
+}
 
 /**
  * Standard tajweed rule colors (source: alquran.cloud's tajweed-guide

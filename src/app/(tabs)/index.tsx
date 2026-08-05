@@ -11,6 +11,7 @@ import { Pressable, Text, View } from 'react-native';
 
 import { useApp } from '@/app-state/provider';
 import { ActionButton, AppScreen, IconAction } from '@/components/ui';
+import { BrandMark } from '@/components/brand-mark';
 import { StreakBadge } from '@/components/streak-badge';
 import { useThemedStyles } from '@/theme/create-styles';
 import { useThemeColors } from '@/theme/theme-context';
@@ -44,6 +45,11 @@ export default function TodayScreen() {
         />
       }
     >
+      <View style={styles.brandRow}>
+        <BrandMark size={22} />
+        <Text style={styles.brandLabel}>Hifz</Text>
+      </View>
+
       <View style={styles.streakRow}>
         <StreakBadge streak={stats.streak} />
       </View>
@@ -141,6 +147,18 @@ export default function TodayScreen() {
 
 function createStyles(colors: ColorPalette) {
   return {
+    brandRow: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: spacing.xs,
+      marginBottom: spacing.md,
+    },
+    brandLabel: {
+      color: colors.gold,
+      fontFamily: typography.bengaliMedium,
+      fontSize: 13,
+      letterSpacing: 1,
+    },
     streakRow: {
       flexDirection: 'row' as const,
       marginBottom: spacing.md,

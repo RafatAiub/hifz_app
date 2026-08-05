@@ -14,7 +14,6 @@ import {
   ArrowRight,
   Check,
   Eye,
-  EyeOff,
   Gauge,
   Mic,
   Pause,
@@ -45,6 +44,8 @@ import { useThemeColors } from '@/theme/theme-context';
 import { radius, spacing, typography, type ColorPalette } from '@/theme/tokens';
 
 const PLAYBACK_RATES = [0.75, 1] as const;
+const REPEAT_TARGETS = [1, 3, 5, 'continuous'] as const;
+type RepeatTarget = (typeof REPEAT_TARGETS)[number];
 const MIN_DB = -60;
 
 function normalizeMetering(db: number | undefined) {
@@ -72,12 +73,13 @@ export default function SessionScreen() {
   const [ayahIndex, setAyahIndex] = useState(0);
   const [repetitions, setRepetitions] = useState(0);
   const [hints, setHints] = useState(0);
-  const [revealed, setRevealed] = useState(false);
   const [recordingUri, setRecordingUri] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [rating, setRating] = useState<RecallRating>('good');
   const [waveformSamples, setWaveformSamples] = useState<number[]>([]);
   const [playbackRateIndex, setPlaybackRateIndex] = useState(1);
+  const [repeatTargetIndex, setRepeatTargetIndex] = useState(0);
+  const [playsThisAyah, setPlaysThisAyah] = useState(0);
   const [abSource, setAbSource] = useState<'reference' | 'own'>('reference');
   const player = useAudioPlayer();
   const recorder = useAudioRecorder({
@@ -93,6 +95,7 @@ export default function SessionScreen() {
     ? quranDemoPack.surahs.find((s) => s.number === currentAyah.surahNumber)
     : undefined;
   const playbackRate = PLAYBACK_RATES[playbackRateIndex] ?? 1;
+  const repeatTarget: RepeatTarget = REPEAT_TARGETS[repeatTargetIndex] ?? 1;
 
   useEffect(() => {
     if (!recorderState.isRecording) return;
@@ -107,7 +110,16 @@ export default function SessionScreen() {
 
   useEffect(() => {
     if (stage.key !== 'listen' || !playerStatus.didJustFinish) return;
-    const timer = setTimeout(() => moveAyah(), 900);
+    const timer = setTimeout(() => {
+      const target = repeatTarget;
+      const nextPlays = playsThisAyah + 1;
+      if (target === 'continuous' || nextPlays < target) {
+        void playAyah();
+        return;
+      }
+      setPlaysThisAyah(0);
+      moveAyah();
+    }, 900);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playerStatus.didJustFinish, stage.key]);
@@ -121,6 +133,7 @@ export default function SessionScreen() {
       player.setPlaybackRate(playbackRate);
       player.play();
       setRepetitions((value) => value + 1);
+      setPlaysThisAyah((value) => value + 1);
     } finally {
       setBusy(false);
     }
@@ -153,25 +166,31 @@ export default function SessionScreen() {
   }
 
   function moveAyah() {
+    setPlaysThisAyah(0);
     if (ayahIndex < ayahs.length - 1) {
       setAyahIndex((value) => value + 1);
-      setRevealed(false);
       return;
     }
     setAyahIndex(0);
     setStageIndex((value) => Math.min(stages.length - 1, value + 1));
-    setRevealed(false);
     void Haptics.selectionAsync();
   }
 
   async function finish() {
     setBusy(true);
     try {
+      const newAyahKeys = Array.from(
+        new Set(
+          plan?.steps.filter((step) => step.kind === 'new').flatMap((step) => step.ayahKeys) ??
+            [],
+        ),
+      );
       await completeSession({
         rating,
         repetitions,
         hints,
         recordingUri,
+        newAyahKeys,
       });
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.replace('/');
@@ -275,9 +294,11 @@ export default function SessionScreen() {
               </Text>
             </View>
             <QuranAyahRow
+              key={currentAyah.key}
               ayah={currentAyah}
               active
-              hidden={stage.key === 'recite' && !revealed}
+              masked={stage.key === 'recite'}
+              onWordReveal={() => setHints((value) => value + 1)}
             />
           </View>
 
@@ -299,7 +320,25 @@ export default function SessionScreen() {
                     }
                   />
                   <Text style={styles.speedText}>{playbackRate}x গতি</Text>
+                  <IconAction
+                    label={`পুনরাবৃত্তি ${repeatTarget === 'continuous' ? 'চলমান' : `${repeatTarget}x`}`}
+                    icon={<Repeat color={colors.primary} size={18} />}
+                    onPress={() => {
+                      setPlaysThisAyah(0);
+                      setRepeatTargetIndex((value) => (value + 1) % REPEAT_TARGETS.length);
+                    }}
+                  />
+                  <Text style={styles.speedText}>
+                    {repeatTarget === 'continuous' ? 'চলমান repeat' : `${repeatTarget}x repeat`}
+                  </Text>
                 </View>
+                {repeatTarget !== 1 ? (
+                  <Text style={styles.repeatProgress}>
+                    {repeatTarget === 'continuous'
+                      ? `${playsThisAyah} বার শোনা হয়েছে`
+                      : `${playsThisAyah}/${repeatTarget} বার শোনা হয়েছে`}
+                  </Text>
+                ) : null}
               </>
             ) : null}
 
@@ -317,21 +356,14 @@ export default function SessionScreen() {
             ) : null}
 
             {stage.key === 'recite' ? (
-              <ActionButton
-                label={revealed ? 'আয়াত আবার ঢাকুন' : 'একটি hint দেখুন'}
-                tone="quiet"
-                icon={
-                  revealed ? (
-                    <EyeOff color={colors.primary} size={21} />
-                  ) : (
-                    <Eye color={colors.primary} size={21} />
-                  )
-                }
-                onPress={() => {
-                  setRevealed((value) => !value);
-                  if (!revealed) setHints((value) => value + 1);
-                }}
-              />
+              <View style={styles.repeatRow}>
+                <Eye color={colors.primary} size={20} />
+                <Text style={styles.repeatText}>
+                  {hints > 0
+                    ? `${hints}টি শব্দে hint নেওয়া হয়েছে · উপরে ট্যাপ করে শব্দ দেখুন`
+                    : 'উপরে প্রতিটি শব্দে ট্যাপ করে দেখতে/লুকাতে পারেন'}
+                </Text>
+              </View>
             ) : null}
 
             {stage.key === 'record' ? (
@@ -506,6 +538,7 @@ function createStyles(colors: ColorPalette) {
     },
     speedRow: {
       flexDirection: 'row' as const,
+      flexWrap: 'wrap' as const,
       alignItems: 'center' as const,
       justifyContent: 'center' as const,
       gap: spacing.sm,
@@ -515,6 +548,13 @@ function createStyles(colors: ColorPalette) {
       color: colors.muted,
       fontFamily: typography.bengali,
       fontSize: 12,
+    },
+    repeatProgress: {
+      color: colors.muted,
+      fontFamily: typography.bengali,
+      fontSize: 12,
+      textAlign: 'center' as const,
+      marginTop: spacing.sm,
     },
     abRow: {
       flexDirection: 'row' as const,

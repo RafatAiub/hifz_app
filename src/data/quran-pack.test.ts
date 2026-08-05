@@ -38,9 +38,18 @@ describe('Quran content integrity', () => {
   it('has valid page lines and audio for every ayah', () => {
     for (const ayah of quranDemoPack.ayahs) {
       expect(ayah.lineStart).toBeGreaterThanOrEqual(1);
-      expect(ayah.lineEnd).toBeLessThanOrEqual(13);
+      expect(ayah.lineEnd).toBeLessThanOrEqual(16);
       expect(ayah.lineEnd).toBeGreaterThanOrEqual(ayah.lineStart);
       expect(ayah.audioUrl).toMatch(/^https:\/\/everyayah\.com\/.+\.mp3$/);
+    }
+  });
+
+  it('traces every ayah\'s line data to a known source', () => {
+    for (const ayah of quranDemoPack.ayahs) {
+      expect(['hand-reviewed-tanzil', 'quran-foundation-indopak-16']).toContain(
+        ayah.lineDataSource,
+      );
+      expect(ayah.lineDataVerified).toBe(ayah.lineDataSource === 'hand-reviewed-tanzil');
     }
   });
 

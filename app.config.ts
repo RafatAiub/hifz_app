@@ -48,8 +48,14 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     ],
     ['expo-notifications', { color: '#176B4D' }],
     'expo-secure-store',
+    'expo-sharing',
   ],
   experiments: {
     typedRoutes: true,
+  },
+  extra: {
+    eas: {
+      projectId: '03f55cf8-86ad-4d27-806c-52a286d44cab',
+    },
   },
 });

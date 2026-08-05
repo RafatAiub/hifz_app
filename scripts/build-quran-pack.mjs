@@ -4,6 +4,14 @@
 // from Tanzil). Surah 112 (Al-Ikhlas) is intentionally left untouched here —
 // it is the hand-reviewed pilot and lives inline in src/data/quran-pack.ts
 // with an immutability checksum test guarding it.
+//
+// This script only fills line/page fields with a placeholder (see
+// LINES_PER_PAGE below) — it does not know the real mushaf layout. If you
+// re-run this script, you MUST re-run, in order:
+//   node scripts/build-quran-pack-layout.mjs   (fetches real line/page data)
+//   node scripts/merge-quran-pack-layout.mjs   (merges it back in)
+// Skipping those two steps silently reverts every ayah's line/page data back
+// to the placeholder and mislabels lineDataSource.
 import { createHash } from 'node:crypto';
 import { writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';

@@ -1,7 +1,7 @@
 import { useAudioPlayer } from 'expo-audio';
-import { AlertTriangle, ChevronLeft, Download, Pause, Play, WifiOff } from 'lucide-react-native';
+import { AlertTriangle, ChevronLeft, Download, Pause, Play, Search, WifiOff, X } from 'lucide-react-native';
 import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { QuranAyahRow } from '@/components/quran-ayah';
 import { AppScreen, IconAction } from '@/components/ui';
@@ -23,10 +23,45 @@ export default function QuranScreen() {
 
 function SurahList({ onSelect }: { onSelect: (surahNumber: number) => void }) {
   const styles = useThemedStyles(createStyles);
+  const colors = useThemeColors();
+  const [query, setQuery] = useState('');
+
+  const filtered = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) return quranDemoPack.surahs;
+    return quranDemoPack.surahs.filter(
+      (surah) =>
+        surah.nameBn.toLowerCase().includes(needle) ||
+        surah.nameArabic.includes(needle) ||
+        String(surah.number).includes(needle),
+    );
+  }, [query]);
+
   return (
-    <AppScreen eyebrow="IndoPak 13-line" title="কুরআন">
+    <AppScreen eyebrow="IndoPak 16-line" title="কুরআন">
+      <View style={styles.searchRow}>
+        <Search color={colors.muted} size={18} />
+        <TextInput
+          accessibilityLabel="সূরা খুঁজুন"
+          value={query}
+          onChangeText={setQuery}
+          placeholder="সূরার নাম বা নম্বর দিয়ে খুঁজুন"
+          placeholderTextColor={colors.muted}
+          style={styles.searchInput}
+        />
+        {query ? (
+          <Pressable accessibilityLabel="মুছুন" onPress={() => setQuery('')} hitSlop={8}>
+            <X color={colors.muted} size={18} />
+          </Pressable>
+        ) : null}
+      </View>
+
+      {filtered.length === 0 ? (
+        <Text style={styles.noResults}>কোনো সূরা পাওয়া যায়নি।</Text>
+      ) : null}
+
       <View style={styles.list}>
-        {quranDemoPack.surahs.map((surah) => (
+        {filtered.map((surah) => (
           <Pressable
             key={surah.number}
             style={({ pressed }) => [styles.listRow, pressed && styles.listRowPressed]}
@@ -93,7 +128,7 @@ function SurahDetail({
 
   return (
     <AppScreen
-      eyebrow="IndoPak 13-line"
+      eyebrow="IndoPak 16-line"
       title="কুরআন"
       action={
         <IconAction
@@ -127,7 +162,8 @@ function SurahDetail({
         <View style={styles.warningNote}>
           <AlertTriangle color={colors.danger} size={18} />
           <Text style={styles.warningText}>
-            এই সূরার লাইন বিভাজন এখনো একজন আলেম দ্বারা যাচাই করা হয়নি — শুধুমাত্র আনুমানিক।
+            এই সূরার লাইন বিভাজন IndoPak 16-line mushaf layout-এর official data থেকে নেওয়া, কিন্তু
+            এখনো একজন আলেম দ্বারা সরাসরি যাচাই করা হয়নি।
           </Text>
         </View>
       ) : null}
@@ -162,6 +198,32 @@ function SurahDetail({
 
 function createStyles(colors: ColorPalette) {
   return {
+    searchRow: {
+      marginTop: spacing.md,
+      minHeight: 48,
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: spacing.sm,
+      paddingHorizontal: spacing.md,
+      borderRadius: radius.md,
+      backgroundColor: colors.surface,
+      borderColor: colors.line,
+      borderWidth: 1,
+    },
+    searchInput: {
+      flex: 1,
+      height: 46,
+      color: colors.ink,
+      fontFamily: typography.bengali,
+      fontSize: 14,
+    },
+    noResults: {
+      marginTop: spacing.lg,
+      color: colors.muted,
+      fontFamily: typography.bengali,
+      fontSize: 13,
+      textAlign: 'center' as const,
+    },
     list: {
       marginTop: spacing.md,
     },

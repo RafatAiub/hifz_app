@@ -1,15 +1,18 @@
 import type {
   AyahKey,
+  HifzVelocity,
   Milestone,
   QuranContentPack,
   SessionEvent,
   StreakState,
+  SurahForecast,
   SurahProgress,
 } from './types';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const STREAK_MILESTONE_DAYS = [3, 7, 14, 30, 60, 100];
 const AYAH_MILESTONE_COUNTS = [10, 25, 50, 100, 250, 500];
+const VELOCITY_WINDOW_DAYS = 14;
 
 function toDateKey(iso: string): string {
   return iso.slice(0, 10);
@@ -69,6 +72,54 @@ export function computeSurahProgress(
       totalCount: surah.ayahCount,
     };
   });
+}
+
+/**
+ * Average newly-memorized ayahs per day over the trailing window. Uses
+ * `newAyahKeys` (ayahs from 'new' hifz steps only) so review sessions don't
+ * inflate the pace -- see the SessionResult.newAyahKeys doc comment.
+ */
+export function computeVelocity(
+  events: SessionEvent[],
+  now: Date = new Date(),
+  windowDays: number = VELOCITY_WINDOW_DAYS,
+): HifzVelocity {
+  const cutoff = now.getTime() - windowDays * DAY_MS;
+  const newAyahsInWindow = new Set<AyahKey>();
+  for (const event of events) {
+    if (new Date(event.occurredAt).getTime() < cutoff) continue;
+    for (const key of event.payload.newAyahKeys ?? []) {
+      newAyahsInWindow.add(key);
+    }
+  }
+  return {
+    ayahsPerDay: newAyahsInWindow.size / windowDays,
+    windowDays,
+  };
+}
+
+/**
+ * Forecasts days remaining for every surah that's partially (but not
+ * fully) memorized, using the current velocity. Returns null for
+ * `daysLeft` when velocity is 0 -- not enough recent data, not "never".
+ */
+export function computeSurahForecasts(
+  surahProgress: SurahProgress[],
+  velocity: HifzVelocity,
+): SurahForecast[] {
+  return surahProgress
+    .filter((surah) => surah.memorizedCount > 0 && surah.memorizedCount < surah.totalCount)
+    .map((surah) => {
+      const remainingAyahs = surah.totalCount - surah.memorizedCount;
+      const daysLeft =
+        velocity.ayahsPerDay > 0 ? Math.ceil(remainingAyahs / velocity.ayahsPerDay) : null;
+      return {
+        surahNumber: surah.surahNumber,
+        nameBn: surah.nameBn,
+        remainingAyahs,
+        daysLeft,
+      };
+    });
 }
 
 export function computeMilestones(

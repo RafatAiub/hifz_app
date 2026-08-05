@@ -11,9 +11,16 @@ import {
 
 import { quranDemoPack } from '@/data/quran-pack';
 import { buildDailyPlan, scheduleNextReview } from '@/domain/planner';
-import { computeMilestones, computeStreak, computeSurahProgress } from '@/domain/stats';
+import {
+  computeMilestones,
+  computeStreak,
+  computeSurahForecasts,
+  computeSurahProgress,
+  computeVelocity,
+} from '@/domain/stats';
 import type {
   AyahKey,
+  HifzVelocity,
   MemoryState,
   Milestone,
   RecallRating,
@@ -21,6 +28,7 @@ import type {
   SessionPlan,
   StreakState,
   StudentProfile,
+  SurahForecast,
   SurahProgress,
 } from '@/domain/types';
 import { createStorageRepository } from '@/storage/create-repository';
@@ -33,6 +41,8 @@ interface AppStats {
   streak: StreakState;
   surahProgress: SurahProgress[];
   milestones: Milestone[];
+  velocity: HifzVelocity;
+  surahForecasts: SurahForecast[];
 }
 
 interface AppContextValue {
@@ -43,6 +53,9 @@ interface AppContextValue {
   repository: StorageRepository;
   setAvailableMinutes(minutes: number): Promise<void>;
   setThemePreference(preference: StudentProfile['themePreference']): Promise<void>;
+  setArabicTextScale(scale: number): Promise<void>;
+  setArabicFont(font: StudentProfile['arabicFont']): Promise<void>;
+  setUiFont(font: StudentProfile['uiFont']): Promise<void>;
   setSurahMemorized(surahNumber: number, memorized: boolean): Promise<void>;
   refreshPlan(minutes?: number): void;
   completeSession(input: {
@@ -50,6 +63,7 @@ interface AppContextValue {
     repetitions: number;
     hints: number;
     recordingUri: string | null;
+    newAyahKeys: AyahKey[];
   }): Promise<void>;
 }
 
@@ -66,8 +80,11 @@ function makeDefaultProfile(now: Date): StudentProfile {
     calibrationSessions: 0,
     memorizedAyahKeys: [],
     recoveryPreference: 'gentle',
-    mushafLayout: 'indopak-13',
+    mushafLayout: 'indopak-16',
     themePreference: 'system',
+    arabicTextScale: 1,
+    arabicFont: 'naskh',
+    uiFont: 'sans',
     lastActiveAt: null,
     createdAt: iso,
     updatedAt: iso,
@@ -162,6 +179,40 @@ export function AppProvider({ children }: PropsWithChildren) {
     [profile],
   );
 
+  const setArabicTextScale = useCallback(
+    async (scale: number) => {
+      if (!profile) return;
+      const nextProfile = {
+        ...profile,
+        arabicTextScale: scale,
+        updatedAt: new Date().toISOString(),
+      };
+      await repository.saveProfile(nextProfile);
+      setProfile(nextProfile);
+    },
+    [profile],
+  );
+
+  const setArabicFont = useCallback(
+    async (font: StudentProfile['arabicFont']) => {
+      if (!profile) return;
+      const nextProfile = { ...profile, arabicFont: font, updatedAt: new Date().toISOString() };
+      await repository.saveProfile(nextProfile);
+      setProfile(nextProfile);
+    },
+    [profile],
+  );
+
+  const setUiFont = useCallback(
+    async (font: StudentProfile['uiFont']) => {
+      if (!profile) return;
+      const nextProfile = { ...profile, uiFont: font, updatedAt: new Date().toISOString() };
+      await repository.saveProfile(nextProfile);
+      setProfile(nextProfile);
+    },
+    [profile],
+  );
+
   const setSurahMemorized = useCallback(
     async (surahNumber: number, memorized: boolean) => {
       if (!profile) return;
@@ -199,11 +250,13 @@ export function AppProvider({ children }: PropsWithChildren) {
       repetitions,
       hints,
       recordingUri,
+      newAyahKeys,
     }: {
       rating: RecallRating;
       repetitions: number;
       hints: number;
       recordingUri: string | null;
+      newAyahKeys: AyahKey[];
     }) => {
       if (!profile || !plan) return;
       const now = new Date();
@@ -216,6 +269,7 @@ export function AppProvider({ children }: PropsWithChildren) {
         profileId: profile.id,
         completedAt: now.toISOString(),
         completedAyahKeys,
+        newAyahKeys,
         repetitions,
         hints,
         rating,
@@ -304,6 +358,8 @@ export function AppProvider({ children }: PropsWithChildren) {
     const streak = computeStreak(events);
     const surahProgress = computeSurahProgress(memorizedAyahKeys, quranDemoPack);
     const milestones = computeMilestones(events, memorizedAyahKeys, quranDemoPack, streak);
+    const velocity = computeVelocity(events);
+    const surahForecasts = computeSurahForecasts(surahProgress, velocity);
     return {
       completedSessions: events.length,
       memorizedAyahs: memorizedAyahKeys.length,
@@ -311,6 +367,8 @@ export function AppProvider({ children }: PropsWithChildren) {
       streak,
       surahProgress,
       milestones,
+      velocity,
+      surahForecasts,
     };
   }, [events, memoryStates, profile?.memorizedAyahKeys]);
 
@@ -323,6 +381,9 @@ export function AppProvider({ children }: PropsWithChildren) {
       repository,
       setAvailableMinutes,
       setThemePreference,
+      setArabicTextScale,
+      setArabicFont,
+      setUiFont,
       setSurahMemorized,
       refreshPlan,
       completeSession,
@@ -335,6 +396,9 @@ export function AppProvider({ children }: PropsWithChildren) {
       refreshPlan,
       setAvailableMinutes,
       setThemePreference,
+      setArabicTextScale,
+      setArabicFont,
+      setUiFont,
       setSurahMemorized,
       stats,
     ],

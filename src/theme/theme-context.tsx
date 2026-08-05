@@ -8,7 +8,7 @@ import {
 import { useColorScheme } from 'react-native';
 
 import { useApp } from '@/app-state/provider';
-import { darkPalette, lightPalette, type ColorPalette, type ThemeMode } from '@/theme/tokens';
+import { darkPalette, lightPalette, resolveTypography, type ColorPalette, type ThemeMode } from '@/theme/tokens';
 
 interface ThemeContextValue {
   mode: ThemeMode;
@@ -57,4 +57,15 @@ export function useThemeColors(): ColorPalette {
 export function useThemeMode() {
   const { mode, preference, setPreference } = useThemeContext();
   return { mode, preference, setPreference };
+}
+
+/** Resolved font families for reading content (Quran text + translation),
+ * following the user's Settings choice. See resolveTypography() for why
+ * only reading content -- not UI chrome -- switches family. */
+export function useTypography() {
+  const { profile } = useApp();
+  return useMemo(
+    () => resolveTypography(profile?.arabicFont ?? 'naskh', profile?.uiFont ?? 'sans'),
+    [profile?.arabicFont, profile?.uiFont],
+  );
 }

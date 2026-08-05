@@ -8,8 +8,11 @@ export interface StudentProfile {
   calibrationSessions: number;
   memorizedAyahKeys: AyahKey[];
   recoveryPreference: 'gentle' | 'strict';
-  mushafLayout: 'indopak-13';
+  mushafLayout: 'indopak-16';
   themePreference: 'system' | 'light' | 'dark';
+  arabicTextScale: number;
+  arabicFont: 'naskh' | 'amiri';
+  uiFont: 'sans' | 'serif';
   lastActiveAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -25,13 +28,19 @@ export interface QuranAyah {
   arabic: string;
   translationBn: string;
   audioUrl: string;
+  /** True only once a qualified human reviewer has checked this ayah's line
+   * placement against a printed mushaf — a data source alone, however
+   * reputable, does not set this to true. */
   lineDataVerified: boolean;
+  /** Traceable provenance of the line/page data, independent of
+   * lineDataVerified — e.g. which dataset or manual review produced it. */
+  lineDataSource: 'hand-reviewed-tanzil' | 'quran-foundation-indopak-16';
 }
 
 export interface QuranContentPack {
   id: string;
   version: string;
-  layout: 'indopak-13';
+  layout: 'indopak-16';
   sourceName: string;
   sourceUrl: string;
   checksumSha256: string;
@@ -89,6 +98,9 @@ export interface SessionResult {
   profileId: string;
   completedAt: string;
   completedAyahKeys: AyahKey[];
+  /** Subset of completedAyahKeys that came from 'new' hifz steps (not
+   * warmup/sabqi/manzil review) -- used to compute memorization velocity. */
+  newAyahKeys: AyahKey[];
   repetitions: number;
   hints: number;
   rating: RecallRating;
@@ -129,4 +141,18 @@ export interface SurahProgress {
   nameArabic: string;
   memorizedCount: number;
   totalCount: number;
+}
+
+export interface HifzVelocity {
+  /** Average newly-memorized ayahs per day over the trailing window. */
+  ayahsPerDay: number;
+  windowDays: number;
+}
+
+export interface SurahForecast {
+  surahNumber: number;
+  nameBn: string;
+  remainingAyahs: number;
+  /** null when velocity is 0 (not enough recent data to forecast). */
+  daysLeft: number | null;
 }

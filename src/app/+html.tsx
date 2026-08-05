@@ -20,7 +20,7 @@ export default function Root({ children }: PropsWithChildren) {
           content="ব্যক্তিগত daily plan, integrated Quran এবং distraction-free guided session."
           property="og:description"
         />
-        <meta content="/social-card.png" property="og:image" />
+        <meta content="/social-card.jpg" property="og:image" />
         <link href="/manifest.json" rel="manifest" />
         <link href="/favicon.png" rel="icon" />
         <ScrollViewStyleReset />

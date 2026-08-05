@@ -1,5 +1,5 @@
 import { Fragment } from 'react';
-import { Text, type TextStyle } from 'react-native';
+import { Text, type StyleProp, type TextStyle } from 'react-native';
 
 import tajweedData from '@/data/quran-tajweed-data.json';
 import { tajweedColors, type TajweedRule } from '@/theme/tokens';
@@ -17,16 +17,23 @@ export function TajweedArabicText({
   ayahKey,
   text,
   style,
+  trailing,
+  trailingStyle,
 }: {
   ayahKey: string;
   text: string;
-  style: TextStyle;
+  style: StyleProp<TextStyle>;
+  /** Rendered as one more inline run at the end of the verse, e.g. the
+   * traditional ۝ end-of-ayah ornament with its verse number. */
+  trailing?: string;
+  trailingStyle?: StyleProp<TextStyle>;
 }) {
   const segments = segmentsByAyah[ayahKey];
   if (!segments) {
     return (
       <Text selectable style={style}>
         {text}
+        {trailing ? <Text style={trailingStyle}>{trailing}</Text> : null}
       </Text>
     );
   }
@@ -42,6 +49,7 @@ export function TajweedArabicText({
           )}
         </Fragment>
       ))}
+      {trailing ? <Text style={trailingStyle}>{trailing}</Text> : null}
     </Text>
   );
 }

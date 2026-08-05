@@ -1,32 +1,74 @@
 import { StyleSheet, Text, View } from 'react-native';
 
+import { useApp } from '@/app-state/provider';
+import { MaskedAyah } from '@/components/masked-ayah';
 import { TajweedArabicText } from '@/components/tajweed-arabic-text';
 import { useThemedStyles } from '@/theme/create-styles';
+import { useTypography } from '@/theme/theme-context';
 import type { QuranAyah } from '@/domain/types';
 import { radius, spacing, typography, type ColorPalette } from '@/theme/tokens';
+
+const BASE_ARABIC_SIZE = 36;
+const BASE_ARABIC_LINE_HEIGHT = 64;
+const EASTERN_ARABIC_DIGITS = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
+
+/** Traditional mushaf end-of-ayah marker: the ۝ ornament with the verse
+ * number written in Eastern Arabic numerals inside it. */
+function verseEndOrnament(ayahNumber: number) {
+  const digits = String(ayahNumber)
+    .split('')
+    .map((d) => EASTERN_ARABIC_DIGITS[Number(d)] ?? d)
+    .join('');
+  return ` ۝${digits}`;
+}
 
 export function QuranAyahRow({
   ayah,
   hidden = false,
+  masked = false,
+  onWordReveal,
   active = false,
 }: {
   ayah: QuranAyah;
   hidden?: boolean;
+  /** Word-by-word tap-to-reveal self-testing instead of showing the ayah. */
+  masked?: boolean;
+  onWordReveal?: () => void;
   active?: boolean;
 }) {
+  const { profile } = useApp();
+  const scale = profile?.arabicTextScale ?? 1;
   const styles = useThemedStyles(createStyles);
+  const fonts = useTypography();
   return (
     <View style={[styles.row, active && styles.active]}>
       <View style={styles.number}>
         <Text style={styles.numberText}>{ayah.ayahNumber}</Text>
       </View>
       <View style={styles.copy}>
-        {hidden ? (
+        {masked ? (
+          <MaskedAyah ayah={ayah} onReveal={onWordReveal ?? (() => {})} />
+        ) : hidden ? (
           <View accessibilityLabel="আয়াতটি লুকানো আছে" style={styles.hiddenLine} />
         ) : (
-          <TajweedArabicText ayahKey={ayah.key} text={ayah.arabic} style={styles.arabic} />
+          <TajweedArabicText
+            ayahKey={ayah.key}
+            text={ayah.arabic}
+            trailing={verseEndOrnament(ayah.ayahNumber)}
+            trailingStyle={styles.verseEnd}
+            style={[
+              styles.arabic,
+              {
+                fontFamily: fonts.arabicBold,
+                fontSize: BASE_ARABIC_SIZE * scale,
+                lineHeight: BASE_ARABIC_LINE_HEIGHT * scale,
+              },
+            ]}
+          />
         )}
-        <Text style={styles.translation}>{ayah.translationBn}</Text>
+        <Text style={[styles.translation, { fontFamily: fonts.bengali }]}>
+          {ayah.translationBn}
+        </Text>
       </View>
     </View>
   );
@@ -78,6 +120,9 @@ function createStyles(colors: ColorPalette) {
       fontSize: 14,
       lineHeight: 23,
       marginTop: spacing.xs,
+    },
+    verseEnd: {
+      color: colors.primary,
     },
     hiddenLine: {
       height: 42,
