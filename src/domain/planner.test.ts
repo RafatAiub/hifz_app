@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { quranDemoPack } from '@/data/quran-pack';
-import { buildDailyPlan, scheduleNextReview } from '@/domain/planner';
+import { buildDailyPlan, getPrecedingAyahKeys, scheduleNextReview } from '@/domain/planner';
 import type { MemoryState, StudentProfile } from '@/domain/types';
 
 function profile(overrides: Partial<StudentProfile> = {}): StudentProfile {
@@ -150,5 +150,17 @@ describe('scheduleNextReview', () => {
     }
     expect(result.consecutiveAgainCount).toBe(4);
     expect(result.isLeech).toBe(true);
+  });
+});
+
+describe('getPrecedingAyahKeys', () => {
+  it('links only to an already learned ayah in the same surah', () => {
+    expect(getPrecedingAyahKeys('112:3', quranDemoPack, ['112:1', '112:2', '111:5'])).toEqual([
+      '112:2',
+    ]);
+  });
+
+  it('does not cross a surah boundary', () => {
+    expect(getPrecedingAyahKeys('112:1', quranDemoPack, ['111:5'])).toEqual([]);
   });
 });

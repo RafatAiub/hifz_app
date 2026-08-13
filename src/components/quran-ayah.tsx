@@ -2,14 +2,20 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { useApp } from '@/app-state/provider';
 import { MaskedAyah } from '@/components/masked-ayah';
+import type { MaskLevel } from '@/components/masked-ayah';
 import { TajweedArabicText } from '@/components/tajweed-arabic-text';
 import { useThemedStyles } from '@/theme/create-styles';
 import { useTypography } from '@/theme/theme-context';
 import type { QuranAyah } from '@/domain/types';
-import { radius, spacing, typography, type ColorPalette } from '@/theme/tokens';
+import {
+  ARABIC_READING_LINE_HEIGHT,
+  ARABIC_READING_SIZE,
+  radius,
+  spacing,
+  typography,
+  type ColorPalette,
+} from '@/theme/tokens';
 
-const BASE_ARABIC_SIZE = 36;
-const BASE_ARABIC_LINE_HEIGHT = 64;
 const EASTERN_ARABIC_DIGITS = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
 
 /** Traditional mushaf end-of-ayah marker: the ۝ ornament with the verse
@@ -26,13 +32,16 @@ export function QuranAyahRow({
   ayah,
   hidden = false,
   masked = false,
+  maskLevel,
   onWordReveal,
   active = false,
 }: {
   ayah: QuranAyah;
   hidden?: boolean;
-  /** Word-by-word tap-to-reveal self-testing instead of showing the ayah. */
+  /** @deprecated Use maskLevel. Kept for persisted/older callers. */
   masked?: boolean;
+  /** Word-by-word tap-to-reveal self-testing instead of showing the ayah. */
+  maskLevel?: MaskLevel;
   onWordReveal?: () => void;
   active?: boolean;
 }) {
@@ -46,8 +55,12 @@ export function QuranAyahRow({
         <Text style={styles.numberText}>{ayah.ayahNumber}</Text>
       </View>
       <View style={styles.copy}>
-        {masked ? (
-          <MaskedAyah ayah={ayah} onReveal={onWordReveal ?? (() => {})} />
+        {maskLevel !== undefined || masked ? (
+          <MaskedAyah
+            ayah={ayah}
+            maskLevel={maskLevel ?? 2}
+            onReveal={onWordReveal ?? (() => {})}
+          />
         ) : hidden ? (
           <View accessibilityLabel="আয়াতটি লুকানো আছে" style={styles.hiddenLine} />
         ) : (
@@ -60,8 +73,8 @@ export function QuranAyahRow({
               styles.arabic,
               {
                 fontFamily: fonts.arabicBold,
-                fontSize: BASE_ARABIC_SIZE * scale,
-                lineHeight: BASE_ARABIC_LINE_HEIGHT * scale,
+                fontSize: ARABIC_READING_SIZE * scale,
+                lineHeight: ARABIC_READING_LINE_HEIGHT * scale,
               },
             ]}
           />

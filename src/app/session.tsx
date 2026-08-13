@@ -3,7 +3,6 @@ import {
   RecordingPresets,
   setAudioModeAsync,
   useAudioPlayer,
-  useAudioPlayerStatus,
   useAudioRecorder,
   useAudioRecorderState,
 } from 'expo-audio';
@@ -11,132 +10,219 @@ import * as Haptics from 'expo-haptics';
 import { router } from 'expo-router';
 import * as Sharing from 'expo-sharing';
 import {
-  ArrowRight,
+  ArrowLeft,
   Check,
   Eye,
-  Gauge,
+  Link2,
   Mic,
   Pause,
   Play,
-  Repeat,
   RotateCcw,
   Share2,
+  Sparkles,
   Square,
+  Volume2,
   X,
 } from 'lucide-react-native';
 import { useEffect, useMemo, useState } from 'react';
-import {
-  ActivityIndicator,
-  Pressable,
-  Text,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
 
 import { useApp } from '@/app-state/provider';
 import { QuranAyahRow } from '@/components/quran-ayah';
 import { ActionButton, AppScreen, IconAction } from '@/components/ui';
 import { Waveform } from '@/components/waveform';
 import { getAyahs, quranDemoPack } from '@/data/quran-pack';
-import type { RecallRating } from '@/domain/types';
+import { getPrecedingAyahKeys } from '@/domain/planner';
+import type {
+  AyahKey,
+  AyahOutcome,
+  QuranAyah,
+  RecallRating,
+  SessionStepKind,
+  SurahTestResult,
+} from '@/domain/types';
 import { resolveAudioSource } from '@/services/audio-cache';
 import { useThemedStyles } from '@/theme/create-styles';
 import { useThemeColors } from '@/theme/theme-context';
 import { radius, spacing, typography, type ColorPalette } from '@/theme/tokens';
 
-const PLAYBACK_RATES = [0.75, 1] as const;
-const REPEAT_TARGETS = [1, 3, 5, 'continuous'] as const;
-type RepeatTarget = (typeof REPEAT_TARGETS)[number];
-const MIN_DB = -60;
+type Phase = 'review' | 'listen' | 'attempt' | 'chain' | 'record' | 'rate' | 'surah-test';
+type MaskLevel = 0 | 1 | 2;
+type SessionUnit = { ayah: QuranAyah; kind: SessionStepKind };
 
-function normalizeMetering(db: number | undefined) {
-  if (db === undefined || Number.isNaN(db)) return 0;
-  return Math.max(0, Math.min(1, (db - MIN_DB) / -MIN_DB));
+const ratingOptions: Array<{ value: RecallRating; label: string; note: string }> = [
+  { value: 'again', label: 'আবার', note: 'এখনো স্বাধীনভাবে হয়নি' },
+  { value: 'hard', label: 'কঠিন', note: 'হয়েছে, তবে থামতে হয়েছে' },
+  { value: 'good', label: 'ভালো', note: 'স্বচ্ছন্দে বলতে পেরেছি' },
+  { value: 'easy', label: 'সহজ', note: 'একদম স্থির ছিল' },
+];
+
+const phaseCopy: Record<Phase, { label: string; title: string; hint: string }> = {
+  review: {
+    label: 'ঝালাই',
+    title: 'মনে থেকে বলুন',
+    hint: 'শব্দে ট্যাপ করলে hint খুলবে। শেষে সত্যি rating দিন।',
+  },
+  listen: {
+    label: 'শোনা',
+    title: 'একবার গভীরভাবে শুনুন',
+    hint: 'মাখরাজ, বিরতি ও ছন্দ লক্ষ্য করুন। তারপর দ্রুত recall-এ যাবেন।',
+  },
+  attempt: {
+    label: 'Active recall',
+    title: 'সহায়তা ধীরে ধীরে কমান',
+    hint: 'App আপনার সফলতার সাথে text আড়াল করবে।',
+  },
+  chain: {
+    label: 'সংযোগ',
+    title: 'আগের আয়াত থেকে মিলিয়ে বলুন',
+    hint: 'হিফজ শুধু আলাদা আয়াত নয়; transition-টিও মনে থাকতে হবে।',
+  },
+  record: {
+    label: 'শুনানি',
+    title: 'নিজের তিলাওয়াত শুনুন',
+    hint: 'Record optional, কিন্তু নিজের কণ্ঠ শোনা hesitation ধরতে সাহায্য করে।',
+  },
+  rate: {
+    label: 'Evidence',
+    title: 'এই আয়াত কতটা স্থির?',
+    hint: 'আপনার উত্তর দিয়েই পরের review date তৈরি হবে।',
+  },
+  'surah-test': {
+    label: 'সামি‘ test',
+    title: 'পুরো সূরা না দেখে শুনান',
+    hint: 'Text বন্ধ থাকবে। শেষে নিজে শুনুন বা teacher-কে পাঠান।',
+  },
+};
+
+function averageRating(ratings: RecallRating[]): RecallRating {
+  if (!ratings.length) return 'good';
+  const score = { again: 0, hard: 1, good: 2, easy: 3 } as const;
+  const average = ratings.reduce((sum, rating) => sum + score[rating], 0) / ratings.length;
+  return average < 0.75 ? 'again' : average < 1.5 ? 'hard' : average < 2.5 ? 'good' : 'easy';
 }
 
-const stages = [
-  { key: 'listen', title: 'মন দিয়ে শুনুন', hint: 'প্রতি আয়াত শুনে মুখে ধীরে বলুন।' },
-  { key: 'read', title: 'দেখে পুনরাবৃত্তি', hint: 'শব্দ ও থামার জায়গা লক্ষ্য করুন।' },
-  { key: 'recite', title: 'এবার না দেখে', hint: 'ভুলে গেলে hint নিতে পারেন।' },
-  { key: 'record', title: 'নিজেকে শুনান', hint: 'Record করে একবার নিজেই শুনুন।' },
-  { key: 'rate', title: 'আজ কেমন হলো?', hint: 'সত্যি অনুভূতিটা বেছে নিন।' },
-] as const;
-
 export default function SessionScreen() {
-  const { plan, completeSession } = useApp();
+  const { plan, profile, completeSession } = useApp();
   const colors = useThemeColors();
   const styles = useThemedStyles(createStyles);
-  const ayahs = useMemo(
-    () => getAyahs(plan?.steps.flatMap((step) => step.ayahKeys) ?? []),
-    [plan],
+  const units = useMemo<SessionUnit[]>(() => {
+    if (!plan) return [];
+    return plan.steps.flatMap((step) =>
+      getAyahs(step.ayahKeys).map((ayah) => ({ ayah, kind: step.kind })),
+    );
+  }, [plan]);
+  const newAyahKeys = useMemo(
+    () => new Set(units.filter((item) => item.kind === 'new').map((item) => item.ayah.key)),
+    [units],
   );
-  const [stageIndex, setStageIndex] = useState(0);
-  const [ayahIndex, setAyahIndex] = useState(0);
-  const [repetitions, setRepetitions] = useState(0);
-  const [hints, setHints] = useState(0);
-  const [recordingUri, setRecordingUri] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [unitIndex, setUnitIndex] = useState(0);
+  const unit = units[unitIndex];
+  const [phase, setPhase] = useState<Phase>(unit?.kind === 'new' ? 'listen' : 'review');
+  const [maskLevel, setMaskLevel] = useState<MaskLevel>(0);
+  const [attemptHints, setAttemptHints] = useState(0);
+  const [ayahHints, setAyahHints] = useState(0);
+  const [ayahRepetitions, setAyahRepetitions] = useState(0);
+  const [cleanLevelTwoPasses, setCleanLevelTwoPasses] = useState(0);
+  const [outcomes, setOutcomes] = useState<AyahOutcome[]>([]);
   const [rating, setRating] = useState<RecallRating>('good');
+  const [recordingUri, setRecordingUri] = useState<string | null>(null);
+  const [surahTest, setSurahTest] = useState<SurahTestResult | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [feedback, setFeedback] = useState('');
   const [waveformSamples, setWaveformSamples] = useState<number[]>([]);
-  const [playbackRateIndex, setPlaybackRateIndex] = useState(1);
-  const [repeatTargetIndex, setRepeatTargetIndex] = useState(0);
-  const [playsThisAyah, setPlaysThisAyah] = useState(0);
-  const [abSource, setAbSource] = useState<'reference' | 'own'>('reference');
   const player = useAudioPlayer();
   const recorder = useAudioRecorder({
     ...RecordingPresets.HIGH_QUALITY,
     directory: 'document',
     isMeteringEnabled: true,
   });
-  const recorderState = useAudioRecorderState(recorder, 100);
-  const playerStatus = useAudioPlayerStatus(player);
-  const stage = stages[stageIndex] ?? stages[0];
-  const currentAyah = ayahs[ayahIndex] ?? ayahs[0];
+  const recorderState = useAudioRecorderState(recorder, 120);
+
+  const currentAyah = unit?.ayah;
   const currentSurah = currentAyah
-    ? quranDemoPack.surahs.find((s) => s.number === currentAyah.surahNumber)
+    ? quranDemoPack.surahs.find((surah) => surah.number === currentAyah.surahNumber)
     : undefined;
-  const playbackRate = PLAYBACK_RATES[playbackRateIndex] ?? 1;
-  const repeatTarget: RepeatTarget = REPEAT_TARGETS[repeatTargetIndex] ?? 1;
+  const allowedPreceding = new Set<AyahKey>([
+    ...(profile?.memorizedAyahKeys ?? []),
+    ...outcomes.map((outcome) => outcome.ayahKey),
+  ]);
+  const precedingAyahs = currentAyah
+    ? getAyahs(getPrecedingAyahKeys(currentAyah.key, quranDemoPack, allowedPreceding))
+    : [];
+  const progress = units.length ? Math.min(1, (unitIndex + phaseProgress(phase)) / units.length) : 0;
+  const currentCopy = phaseCopy[phase];
 
-  useEffect(() => {
-    if (!recorderState.isRecording) return;
-    setWaveformSamples((current) =>
-      [...current, normalizeMetering(recorderState.metering)].slice(-60),
-    );
-  }, [recorderState.isRecording, recorderState.metering]);
-
-  useEffect(() => {
-    player.setPlaybackRate(playbackRate);
-  }, [player, playbackRate]);
-
-  useEffect(() => {
-    if (stage.key !== 'listen' || !playerStatus.didJustFinish) return;
-    const timer = setTimeout(() => {
-      const target = repeatTarget;
-      const nextPlays = playsThisAyah + 1;
-      if (target === 'continuous' || nextPlays < target) {
-        void playAyah();
-        return;
-      }
-      setPlaysThisAyah(0);
-      moveAyah();
-    }, 900);
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [playerStatus.didJustFinish, stage.key]);
-
-  async function playAyah() {
-    if (!currentAyah) return;
+  async function playAyah(ayah = currentAyah) {
+    if (!ayah) return;
     setBusy(true);
     try {
-      const uri = await resolveAudioSource(currentAyah.audioUrl);
+      const uri = await resolveAudioSource(ayah.audioUrl);
       player.replace({ uri });
-      player.setPlaybackRate(playbackRate);
       player.play();
-      setRepetitions((value) => value + 1);
-      setPlaysThisAyah((value) => value + 1);
+      setAyahRepetitions((value) => value + 1);
     } finally {
       setBusy(false);
     }
+  }
+
+  function registerHint() {
+    setAttemptHints((value) => value + 1);
+    setAyahHints((value) => value + 1);
+  }
+
+  function startAttempt() {
+    setMaskLevel(0);
+    setAttemptHints(0);
+    setFeedback('প্রথমবার পুরো text দেখে পড়ুন। এরপর cue কমবে।');
+    setPhase('attempt');
+  }
+
+  function submitAttempt(reportedClean: boolean) {
+    const clean = reportedClean && attemptHints === 0;
+    setAyahRepetitions((value) => value + 1);
+    setAttemptHints(0);
+
+    if (!clean) {
+      setCleanLevelTwoPasses(0);
+      setMaskLevel((level) => (level === 2 ? 1 : level));
+      setFeedback('ঠিক আছে। Cue এক ধাপ বাড়ানো হলো; আবার শান্তভাবে চেষ্টা করুন।');
+      void Haptics.selectionAsync();
+      return;
+    }
+
+    if (maskLevel < 2) {
+      setMaskLevel((level) => (level + 1) as MaskLevel);
+      setFeedback(maskLevel === 0 ? 'এবার শুধু শব্দের শুরু থাকবে।' : 'এবার পুরো আয়াত আড়ালে।');
+      void Haptics.selectionAsync();
+      return;
+    }
+
+    const nextPasses = cleanLevelTwoPasses + 1;
+    setCleanLevelTwoPasses(nextPasses);
+    if (nextPasses < 2) {
+      setFeedback('একটি clean recall হয়েছে। স্থির করতে আর একবার বলুন।');
+      return;
+    }
+    if (precedingAyahs.length) {
+      setFeedback('আয়াতটি তৈরি। এবার আগের আয়াতের সাথে সংযোগ করুন।');
+      setPhase('chain');
+    } else {
+      setPhase('record');
+    }
+  }
+
+  function submitChain(clean: boolean) {
+    if (!clean || attemptHints > 0) {
+      setAttemptHints(0);
+      setCleanLevelTwoPasses(0);
+      setMaskLevel(1);
+      setFeedback('Transition-এ সাহায্য লেগেছে। Cue নিয়ে আয়াতটি আরেকবার শক্ত করুন।');
+      setPhase('attempt');
+      return;
+    }
+    setAttemptHints(0);
+    setPhase('record');
   }
 
   async function toggleRecording() {
@@ -147,50 +233,116 @@ export default function SessionScreen() {
       return;
     }
     const permission = await AudioModule.requestRecordingPermissionsAsync();
-    if (!permission.granted) return;
+    if (!permission.granted) {
+      setFeedback('Microphone permission না থাকলেও session চালিয়ে যেতে পারবেন।');
+      return;
+    }
     setWaveformSamples([]);
-    setAbSource('own');
     await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
     await recorder.prepareToRecordAsync();
     recorder.record();
   }
 
-  async function playAbSource() {
+  useEffect(() => {
+    if (!recorderState.isRecording) return;
+    const normalized = Math.max(0, Math.min(1, ((recorderState.metering ?? -60) + 60) / 60));
+    setWaveformSamples((values) =>
+      values[values.length - 1] === normalized ? values : [...values, normalized].slice(-54),
+    );
+  }, [recorderState.isRecording, recorderState.metering]);
+
+  function rateReview(value: RecallRating) {
     if (!currentAyah) return;
-    const targetSource =
-      abSource === 'reference' ? await resolveAudioSource(currentAyah.audioUrl) : recordingUri;
-    if (!targetSource) return;
-    player.replace({ uri: targetSource });
-    player.setPlaybackRate(playbackRate);
-    player.play();
+    const outcome: AyahOutcome = {
+      ayahKey: currentAyah.key,
+      rating: value,
+      hints: ayahHints,
+      repetitions: ayahRepetitions,
+      cleanLevelTwoPasses: value === 'again' ? 0 : 1,
+      linkedWithPrevious: false,
+    };
+    const nextOutcomes = [...outcomes, outcome];
+    setOutcomes(nextOutcomes);
+    moveToNextUnit(nextOutcomes);
   }
 
-  function moveAyah() {
-    setPlaysThisAyah(0);
-    if (ayahIndex < ayahs.length - 1) {
-      setAyahIndex((value) => value + 1);
+  function saveAyahOutcome() {
+    if (!currentAyah) return;
+    const outcome: AyahOutcome = {
+      ayahKey: currentAyah.key,
+      rating,
+      hints: ayahHints,
+      repetitions: ayahRepetitions,
+      cleanLevelTwoPasses,
+      linkedWithPrevious: precedingAyahs.length > 0,
+    };
+    const nextOutcomes = [...outcomes, outcome];
+    setOutcomes(nextOutcomes);
+    moveToNextUnit(nextOutcomes);
+  }
+
+  function moveToNextUnit(nextOutcomes = outcomes) {
+    const nextIndex = unitIndex + 1;
+    if (nextIndex < units.length) {
+      const next = units[nextIndex]!;
+      setUnitIndex(nextIndex);
+      resetAyahState();
+      setPhase(next.kind === 'new' ? 'listen' : 'review');
       return;
     }
-    setAyahIndex(0);
-    setStageIndex((value) => Math.min(stages.length - 1, value + 1));
-    void Haptics.selectionAsync();
+
+    const testSurah = findCompletedSurah(
+      nextOutcomes.filter((outcome) => newAyahKeys.has(outcome.ayahKey)),
+      profile?.memorizedAyahKeys ?? [],
+    );
+    if (testSurah) {
+      setPhase('surah-test');
+      setRecordingUri(null);
+      setWaveformSamples([]);
+    } else {
+      void finish(nextOutcomes, null);
+    }
   }
 
-  async function finish() {
+  function resetAyahState() {
+    setMaskLevel(0);
+    setAttemptHints(0);
+    setAyahHints(0);
+    setAyahRepetitions(0);
+    setCleanLevelTwoPasses(0);
+    setRecordingUri(null);
+    setWaveformSamples([]);
+    setRating('good');
+    setFeedback('');
+  }
+
+  function findCompletedSurah(nextOutcomes: AyahOutcome[], memorized: AyahKey[]) {
+    const nowKnown = new Set<AyahKey>([...memorized, ...nextOutcomes.map((item) => item.ayahKey)]);
+    const touchedSurahs = Array.from(new Set(nextOutcomes.map((item) => Number(item.ayahKey.split(':')[0]))));
+    return quranDemoPack.surahs.find((surah) => {
+      if (!touchedSurahs.includes(surah.number)) return false;
+      const keys = quranDemoPack.ayahs
+        .filter((ayah) => ayah.surahNumber === surah.number)
+        .map((ayah) => ayah.key);
+      return keys.length === surah.ayahCount && keys.every((key) => nowKnown.has(key));
+    });
+  }
+
+  async function finish(nextOutcomes = outcomes, nextSurahTest = surahTest) {
     setBusy(true);
     try {
-      const newAyahKeys = Array.from(
-        new Set(
-          plan?.steps.filter((step) => step.kind === 'new').flatMap((step) => step.ayahKeys) ??
-            [],
-        ),
-      );
+      const completedNewAyahKeys = nextOutcomes
+        .filter((outcome) => newAyahKeys.has(outcome.ayahKey))
+        .map((outcome) => outcome.ayahKey);
+      const aggregateRating = averageRating(nextOutcomes.map((outcome) => outcome.rating));
       await completeSession({
-        rating,
-        repetitions,
-        hints,
-        recordingUri,
-        newAyahKeys,
+        rating: aggregateRating,
+        repetitions: nextOutcomes.reduce((sum, outcome) => sum + outcome.repetitions, 0),
+        hints: nextOutcomes.reduce((sum, outcome) => sum + outcome.hints, 0),
+        recordingUri: nextSurahTest?.recordingUri ?? recordingUri,
+        newAyahKeys: completedNewAyahKeys,
+        ayahOutcomes: nextOutcomes,
+        surahTest: nextSurahTest,
       });
       await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       router.replace('/');
@@ -201,12 +353,10 @@ export default function SessionScreen() {
 
   async function shareRecording() {
     if (!recordingUri || !(await Sharing.isAvailableAsync())) return;
-    await Sharing.shareAsync(recordingUri, {
-      dialogTitle: 'আজকের তিলাওয়াত শেয়ার করুন',
-    });
+    await Sharing.shareAsync(recordingUri, { dialogTitle: 'তিলাওয়াত teacher-কে পাঠান' });
   }
 
-  if (!plan || !currentAyah) {
+  if (!plan || !unit || !currentAyah) {
     return (
       <AppScreen scroll={false} hasTabBar={false} contentStyle={styles.center}>
         <ActivityIndicator color={colors.primary} />
@@ -214,430 +364,301 @@ export default function SessionScreen() {
     );
   }
 
-  return (
-    <AppScreen
-      scroll={false}
-      hasTabBar={false}
-      title={stage.title}
-      eyebrow={`${stageIndex + 1}/${stages.length} · ${stage.hint}`}
-      action={
-        <IconAction
-          label="Session বন্ধ করুন"
-          icon={<X color={colors.ink} size={22} />}
-          onPress={() => router.back()}
+  if (phase === 'surah-test') {
+    const testSurah = findCompletedSurah(
+      outcomes.filter((outcome) => newAyahKeys.has(outcome.ayahKey)),
+      profile?.memorizedAyahKeys ?? [],
+    );
+    return (
+      <AppScreen scroll={false} hasTabBar={false} contentStyle={styles.sessionScreen}>
+        <SessionHeader
+          label={currentCopy.label}
+          title={currentCopy.title}
+          hint={currentCopy.hint}
+          onClose={() => router.back()}
         />
-      }
-    >
-      <View style={styles.progressTrack}>
-        <View
-          style={[
-            styles.progressFill,
-            { width: `${((stageIndex + 1) / stages.length) * 100}%` },
-          ]}
-        />
-      </View>
-
-      {stage.key === 'rate' ? (
-        <View style={styles.ratingArea}>
-          <Text style={styles.ratingQuestion}>
-            না দেখে বলার সময় কতটা স্বস্তি ছিল?
-          </Text>
-          <View style={styles.ratings}>
-            {(
-              [
-                ['again', 'আবার দরকার'],
-                ['hard', 'কঠিন ছিল'],
-                ['good', 'ভালো হয়েছে'],
-                ['easy', 'সহজ ছিল'],
-              ] as const
-            ).map(([value, label]) => (
-              <Pressable
-                key={value}
-                accessibilityRole="radio"
-                accessibilityState={{ checked: rating === value }}
-                onPress={() => setRating(value)}
-                style={[
-                  styles.rating,
-                  rating === value && styles.ratingSelected,
-                ]}
-              >
-                <View style={styles.ratingCheck}>
-                  {rating === value ? (
-                    <Check color={colors.white} size={15} />
-                  ) : null}
-                </View>
-                <Text
-                  style={[
-                    styles.ratingLabel,
-                    rating === value && styles.ratingLabelSelected,
-                  ]}
-                >
-                  {label}
-                </Text>
-              </Pressable>
-            ))}
+        <View style={styles.surahTestHero}>
+          <Text style={styles.bismillah}>بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ</Text>
+          <Text style={styles.surahTestTitle}>সূরা {testSurah?.nameBn}</Text>
+          <Text style={styles.surahTestArabic}>{testSurah?.nameArabic}</Text>
+          <View style={styles.closedMushaf}>
+            <Eye color={colors.gold} size={22} />
+            <Text style={styles.closedText}>Mushaf বন্ধ · পুরো সূরা একসাথে</Text>
           </View>
+        </View>
+        <View style={styles.recordDock}>
           <ActionButton
-            label="আজকের session শেষ করুন"
-            loading={busy}
-            icon={<Check color={colors.white} size={21} />}
-            onPress={() => void finish()}
+            label={
+              recorderState.isRecording
+                ? `শুনানি থামান · ${Math.round(recorderState.durationMillis / 1000)}s`
+                : recordingUri
+                  ? 'আবার শুনান'
+                  : 'শুনানি শুরু করুন'
+            }
+            tone={recorderState.isRecording ? 'danger' : 'primary'}
+            icon={recorderState.isRecording ? <Square color={colors.white} size={19} /> : <Mic color={colors.white} size={20} />}
+            onPress={() => void toggleRecording()}
+          />
+          {waveformSamples.length ? <Waveform samples={waveformSamples} label="পুরো সূরার তিলাওয়াত" /> : null}
+          {recordingUri ? (
+            <View style={styles.inlineActions}>
+              <IconAction
+                label={player.playing ? 'থামান' : 'নিজের শুনানি শুনুন'}
+                icon={player.playing ? <Pause color={colors.primary} size={20} /> : <Play color={colors.primary} size={20} />}
+                onPress={() => {
+                  if (player.playing) player.pause();
+                  else { player.replace({ uri: recordingUri }); player.play(); }
+                }}
+              />
+              <IconAction label="Teacher-কে পাঠান" icon={<Share2 color={colors.primary} size={20} />} onPress={() => void shareRecording()} />
+            </View>
+          ) : null}
+          <ActionButton
+            label="না দেখে সম্পন্ন করেছি"
+            tone="quiet"
+            disabled={!recordingUri}
+            icon={<Check color={colors.primary} size={20} />}
+            onPress={() => {
+              const result: SurahTestResult = {
+                surahNumber: testSurah?.number ?? currentAyah.surahNumber,
+                recordingUri,
+                reviewMode: 'self',
+                completedUnaided: true,
+              };
+              setSurahTest(result);
+              void finish(outcomes, result);
+            }}
           />
         </View>
-      ) : (
-        <>
-          <View style={styles.mushaf}>
-            <View style={styles.mushafMeta}>
-              <Text style={styles.surah}>সূরা {currentSurah?.nameBn ?? ''}</Text>
-              <Text style={styles.ayahCounter}>
-                আয়াত {ayahIndex + 1}/{ayahs.length}
-              </Text>
-            </View>
-            <QuranAyahRow
-              key={currentAyah.key}
-              ayah={currentAyah}
-              active
-              masked={stage.key === 'recite'}
-              onWordReveal={() => setHints((value) => value + 1)}
-            />
-          </View>
+      </AppScreen>
+    );
+  }
 
-          <View style={styles.controls}>
-            {stage.key === 'listen' ? (
-              <>
-                <ActionButton
-                  label={busy ? 'Audio প্রস্তুত হচ্ছে' : 'আয়াতটি শুনুন'}
-                  loading={busy}
-                  icon={<Play color={colors.white} size={21} fill={colors.white} />}
-                  onPress={() => void playAyah()}
-                />
-                <View style={styles.speedRow}>
-                  <IconAction
-                    label={`গতি ${playbackRate}x`}
-                    icon={<Gauge color={colors.primary} size={18} />}
-                    onPress={() =>
-                      setPlaybackRateIndex((value) => (value + 1) % PLAYBACK_RATES.length)
-                    }
-                  />
-                  <Text style={styles.speedText}>{playbackRate}x গতি</Text>
-                  <IconAction
-                    label={`পুনরাবৃত্তি ${repeatTarget === 'continuous' ? 'চলমান' : `${repeatTarget}x`}`}
-                    icon={<Repeat color={colors.primary} size={18} />}
-                    onPress={() => {
-                      setPlaysThisAyah(0);
-                      setRepeatTargetIndex((value) => (value + 1) % REPEAT_TARGETS.length);
-                    }}
-                  />
-                  <Text style={styles.speedText}>
-                    {repeatTarget === 'continuous' ? 'চলমান repeat' : `${repeatTarget}x repeat`}
+  return (
+    <AppScreen scroll={false} hasTabBar={false} contentStyle={styles.sessionScreen}>
+      <SessionHeader
+        label={currentCopy.label}
+        title={currentCopy.title}
+        hint={currentCopy.hint}
+        onClose={() => router.back()}
+      />
+      <View style={styles.progressTrack}>
+        <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
+      </View>
+      <View style={styles.contextRow}>
+        <Text style={styles.surahName}>সূরা {currentSurah?.nameBn}</Text>
+        <Text style={styles.counter}>{unitIndex + 1}/{units.length} · আয়াত {currentAyah.ayahNumber}</Text>
+      </View>
+
+      <ScrollView contentContainerStyle={styles.mushaf} showsVerticalScrollIndicator={false}>
+        {phase === 'chain' ? (
+          <>
+            {precedingAyahs.map((ayah) => (
+              <View key={ayah.key} style={styles.precedingAyah}>
+                <Text style={styles.linkLabel}>আগের আয়াত</Text>
+                <QuranAyahRow ayah={ayah} />
+              </View>
+            ))}
+            <View style={styles.linkDivider}>
+              <Link2 color={colors.gold} size={18} />
+              <Text style={styles.linkDividerText}>এখান থেকে নতুন আয়াতে যান</Text>
+            </View>
+          </>
+        ) : null}
+        <QuranAyahRow
+          key={`${currentAyah.key}-${phase}-${maskLevel}`}
+          ayah={currentAyah}
+          active={phase !== 'listen'}
+          maskLevel={phase === 'attempt' ? maskLevel : phase === 'chain' || phase === 'review' ? 2 : undefined}
+          onWordReveal={registerHint}
+        />
+      </ScrollView>
+
+      {feedback ? (
+        <View style={styles.feedback} accessibilityLiveRegion="polite">
+          <Sparkles color={colors.gold} size={17} />
+          <Text style={styles.feedbackText}>{feedback}</Text>
+        </View>
+      ) : null}
+
+      <View style={styles.controlDock}>
+        {phase === 'listen' ? (
+          <>
+            <ActionButton
+              label={busy ? 'Audio প্রস্তুত হচ্ছে' : 'রেফারেন্স শুনুন'}
+              loading={busy}
+              icon={<Volume2 color={colors.white} size={20} />}
+              onPress={() => void playAyah()}
+            />
+            <Pressable style={styles.textAction} onPress={startAttempt}>
+              <Text style={styles.textActionLabel}>শুনেছি · এখন মনে থেকে বলি</Text>
+              <ArrowLeft color={colors.primary} size={18} />
+            </Pressable>
+          </>
+        ) : null}
+
+        {phase === 'attempt' ? (
+          <>
+            <View style={styles.masteryRow}>
+              {[0, 1, 2].map((level) => (
+                <View key={level} style={styles.masteryItem}>
+                  <View style={[styles.masteryDot, maskLevel >= level && styles.masteryDotActive]} />
+                  <Text style={[styles.masteryLabel, maskLevel === level && styles.masteryLabelActive]}>
+                    {level === 0 ? 'দেখে' : level === 1 ? 'অক্ষর cue' : `আড়ালে ${cleanLevelTwoPasses}/2`}
                   </Text>
                 </View>
-                {repeatTarget !== 1 ? (
-                  <Text style={styles.repeatProgress}>
-                    {repeatTarget === 'continuous'
-                      ? `${playsThisAyah} বার শোনা হয়েছে`
-                      : `${playsThisAyah}/${repeatTarget} বার শোনা হয়েছে`}
-                  </Text>
-                ) : null}
-              </>
-            ) : null}
-
-            {stage.key === 'read' ? (
-              <View style={styles.repeatRow}>
-                <IconAction
-                  label="আরেকবার পড়েছি"
-                  icon={<RotateCcw color={colors.primary} size={22} />}
-                  onPress={() => setRepetitions((value) => value + 1)}
-                />
-                <Text style={styles.repeatText}>
-                  {repetitions} বার পুনরাবৃত্তি
-                </Text>
-              </View>
-            ) : null}
-
-            {stage.key === 'recite' ? (
-              <View style={styles.repeatRow}>
-                <Eye color={colors.primary} size={20} />
-                <Text style={styles.repeatText}>
-                  {hints > 0
-                    ? `${hints}টি শব্দে hint নেওয়া হয়েছে · উপরে ট্যাপ করে শব্দ দেখুন`
-                    : 'উপরে প্রতিটি শব্দে ট্যাপ করে দেখতে/লুকাতে পারেন'}
-                </Text>
-              </View>
-            ) : null}
-
-            {stage.key === 'record' ? (
-              <>
-                <ActionButton
-                  label={
-                    recorderState.isRecording
-                      ? `Recording থামান · ${Math.round(
-                          recorderState.durationMillis / 1000,
-                        )}s`
-                      : recordingUri
-                        ? 'আবার record করুন'
-                        : 'তিলাওয়াত record করুন'
-                  }
-                  tone={recorderState.isRecording ? 'danger' : 'primary'}
-                  icon={
-                    recorderState.isRecording ? (
-                      <Square color={colors.white} size={20} fill={colors.white} />
-                    ) : (
-                      <Mic color={colors.white} size={21} />
-                    )
-                  }
-                  onPress={() => void toggleRecording()}
-                />
-
-                {recorderState.isRecording || waveformSamples.length > 0 ? (
-                  <Waveform samples={waveformSamples} label="আপনার তিলাওয়াত" />
-                ) : null}
-
-                {recordingUri ? (
-                  <>
-                    <View style={styles.abRow}>
-                      <Pressable
-                        style={[
-                          styles.abOption,
-                          abSource === 'reference' && styles.abOptionSelected,
-                        ]}
-                        onPress={() => setAbSource('reference')}
-                      >
-                        <Text
-                          style={[
-                            styles.abOptionText,
-                            abSource === 'reference' && styles.abOptionTextSelected,
-                          ]}
-                        >
-                          রেফারেন্স
-                        </Text>
-                      </Pressable>
-                      <Pressable
-                        style={[
-                          styles.abOption,
-                          abSource === 'own' && styles.abOptionSelected,
-                        ]}
-                        onPress={() => setAbSource('own')}
-                      >
-                        <Text
-                          style={[
-                            styles.abOptionText,
-                            abSource === 'own' && styles.abOptionTextSelected,
-                          ]}
-                        >
-                          আমার recording
-                        </Text>
-                      </Pressable>
-                    </View>
-                    <View style={styles.recordingActions}>
-                      <IconAction
-                        label={player.playing ? 'থামান' : `${abSource === 'reference' ? 'রেফারেন্স' : 'নিজের'} শুনুন`}
-                        icon={
-                          player.playing ? (
-                            <Pause color={colors.primary} size={20} />
-                          ) : (
-                            <Play color={colors.primary} size={20} />
-                          )
-                        }
-                        onPress={() => {
-                          if (player.playing) player.pause();
-                          else void playAbSource();
-                        }}
-                      />
-                      <IconAction
-                        label="A/B পাল্টান"
-                        icon={<Repeat color={colors.primary} size={20} />}
-                        onPress={() =>
-                          setAbSource((value) => (value === 'reference' ? 'own' : 'reference'))
-                        }
-                      />
-                      <IconAction
-                        label="Teacher-কে শেয়ার করুন"
-                        icon={<Share2 color={colors.primary} size={20} />}
-                        onPress={() => void shareRecording()}
-                      />
-                    </View>
-                  </>
-                ) : null}
-              </>
-            ) : null}
-          </View>
-
-          <View style={styles.bottom}>
+              ))}
+            </View>
             <ActionButton
-              label={ayahIndex < ayahs.length - 1 ? 'পরের আয়াত' : 'পরের ধাপ'}
-              icon={<ArrowRight color={colors.white} size={21} />}
-              onPress={moveAyah}
+              label={maskLevel === 0 ? 'পড়েছি · cue কমান' : 'পরিষ্কার বলতে পেরেছি'}
+              icon={<Check color={colors.white} size={20} />}
+              onPress={() => submitAttempt(true)}
             />
-          </View>
-        </>
-      )}
+            {maskLevel > 0 ? (
+              <Pressable style={styles.textAction} onPress={() => submitAttempt(false)}>
+                <RotateCcw color={colors.primary} size={18} />
+                <Text style={styles.textActionLabel}>Hint লেগেছে · আরেকবার</Text>
+              </Pressable>
+            ) : null}
+          </>
+        ) : null}
+
+        {phase === 'chain' ? (
+          <>
+            <ActionButton label="সংযোগ পরিষ্কার হয়েছে" icon={<Link2 color={colors.white} size={20} />} onPress={() => submitChain(true)} />
+            <Pressable style={styles.textAction} onPress={() => submitChain(false)}>
+              <RotateCcw color={colors.primary} size={18} />
+              <Text style={styles.textActionLabel}>Transition-এ থেমেছি</Text>
+            </Pressable>
+          </>
+        ) : null}
+
+        {phase === 'record' ? (
+          <>
+            <ActionButton
+              label={recorderState.isRecording ? `Recording থামান · ${Math.round(recorderState.durationMillis / 1000)}s` : recordingUri ? 'আবার record করুন' : 'তিলাওয়াত record করুন'}
+              tone={recorderState.isRecording ? 'danger' : 'primary'}
+              icon={recorderState.isRecording ? <Square color={colors.white} size={19} /> : <Mic color={colors.white} size={20} />}
+              onPress={() => void toggleRecording()}
+            />
+            {waveformSamples.length ? <Waveform samples={waveformSamples} label="আপনার তিলাওয়াত" /> : null}
+            <Pressable style={styles.textAction} onPress={() => setPhase('rate')}>
+              <Text style={styles.textActionLabel}>{recordingUri ? 'শুনেছি · rating দিন' : 'এখন record করব না'}</Text>
+              <ArrowLeft color={colors.primary} size={18} />
+            </Pressable>
+          </>
+        ) : null}
+
+        {phase === 'rate' ? (
+          <>
+            <RatingGrid selected={rating} onSelect={setRating} />
+            <ActionButton label="আয়াতটি সংরক্ষণ করুন" icon={<Check color={colors.white} size={20} />} onPress={saveAyahOutcome} />
+          </>
+        ) : null}
+
+        {phase === 'review' ? (
+          <>
+            <Text style={styles.reviewQuestion}>না দেখে কেমন হলো?</Text>
+            <RatingGrid selected={null} onSelect={rateReview} compact />
+          </>
+        ) : null}
+      </View>
     </AppScreen>
+  );
+}
+
+function phaseProgress(phase: Phase) {
+  return { review: 0.7, listen: 0.1, attempt: 0.4, chain: 0.65, record: 0.8, rate: 0.95, 'surah-test': 1 }[phase];
+}
+
+function SessionHeader({ label, title, hint, onClose }: { label: string; title: string; hint: string; onClose(): void }) {
+  const colors = useThemeColors();
+  const styles = useThemedStyles(createStyles);
+  return (
+    <View style={styles.header}>
+      <View style={styles.headerCopy}>
+        <Text style={styles.phaseLabel}>{label}</Text>
+        <Text style={styles.title}>{title}</Text>
+        <Text style={styles.hint}>{hint}</Text>
+      </View>
+      <IconAction label="Session বন্ধ করুন" icon={<X color={colors.ink} size={21} />} onPress={onClose} />
+    </View>
+  );
+}
+
+function RatingGrid({ selected, onSelect, compact = false }: { selected: RecallRating | null; onSelect(value: RecallRating): void; compact?: boolean }) {
+  const colors = useThemeColors();
+  const styles = useThemedStyles(createStyles);
+  return (
+    <View style={styles.ratingGrid}>
+      {ratingOptions.map((option) => (
+        <Pressable
+          key={option.value}
+          accessibilityRole="radio"
+          accessibilityState={{ checked: selected === option.value }}
+          onPress={() => onSelect(option.value)}
+          style={[styles.ratingOption, selected === option.value && styles.ratingSelected]}
+        >
+          <View style={[styles.ratingMark, selected === option.value && styles.ratingMarkSelected]}>
+            {selected === option.value ? <Check color={colors.white} size={13} /> : null}
+          </View>
+          <View style={styles.ratingCopy}>
+            <Text style={[styles.ratingLabel, selected === option.value && styles.ratingLabelSelected]}>{option.label}</Text>
+            {!compact ? <Text style={styles.ratingNote}>{option.note}</Text> : null}
+          </View>
+        </Pressable>
+      ))}
+    </View>
   );
 }
 
 function createStyles(colors: ColorPalette) {
   return {
-    center: {
-      flex: 1,
-      alignItems: 'center' as const,
-      justifyContent: 'center' as const,
-    },
-    progressTrack: {
-      height: 5,
-      borderRadius: radius.sm,
-      backgroundColor: colors.line,
-      overflow: 'hidden' as const,
-      marginBottom: spacing.lg,
-    },
-    progressFill: {
-      height: '100%' as const,
-      backgroundColor: colors.primary,
-    },
-    mushaf: {
-      flex: 1,
-      minHeight: 286,
-      justifyContent: 'center' as const,
-      borderTopColor: colors.line,
-      borderBottomColor: colors.line,
-      borderTopWidth: 1,
-      borderBottomWidth: 1,
-    },
-    mushafMeta: {
-      flexDirection: 'row' as const,
-      justifyContent: 'space-between' as const,
-      alignItems: 'center' as const,
-      marginBottom: spacing.md,
-    },
-    surah: {
-      color: colors.primary,
-      fontFamily: typography.bengaliMedium,
-      fontSize: 13,
-    },
-    ayahCounter: {
-      color: colors.muted,
-      fontFamily: typography.bengali,
-      fontSize: 12,
-    },
-    controls: {
-      minHeight: 114,
-      paddingVertical: spacing.lg,
-      justifyContent: 'center' as const,
-    },
-    repeatRow: {
-      minHeight: 56,
-      flexDirection: 'row' as const,
-      alignItems: 'center' as const,
-      justifyContent: 'center' as const,
-      gap: spacing.md,
-    },
-    repeatText: {
-      color: colors.ink,
-      fontFamily: typography.bengaliMedium,
-      fontSize: 15,
-    },
-    speedRow: {
-      flexDirection: 'row' as const,
-      flexWrap: 'wrap' as const,
-      alignItems: 'center' as const,
-      justifyContent: 'center' as const,
-      gap: spacing.sm,
-      marginTop: spacing.md,
-    },
-    speedText: {
-      color: colors.muted,
-      fontFamily: typography.bengali,
-      fontSize: 12,
-    },
-    repeatProgress: {
-      color: colors.muted,
-      fontFamily: typography.bengali,
-      fontSize: 12,
-      textAlign: 'center' as const,
-      marginTop: spacing.sm,
-    },
-    abRow: {
-      flexDirection: 'row' as const,
-      gap: spacing.sm,
-      marginTop: spacing.md,
-    },
-    abOption: {
-      flex: 1,
-      minHeight: 44,
-      borderRadius: radius.md,
-      alignItems: 'center' as const,
-      justifyContent: 'center' as const,
-      backgroundColor: colors.surface,
-      borderColor: colors.line,
-      borderWidth: 1,
-    },
-    abOptionSelected: {
-      backgroundColor: colors.mint,
-      borderColor: colors.primary,
-    },
-    abOptionText: {
-      color: colors.muted,
-      fontFamily: typography.bengaliMedium,
-      fontSize: 12,
-    },
-    abOptionTextSelected: {
-      color: colors.primary,
-    },
-    recordingActions: {
-      flexDirection: 'row' as const,
-      justifyContent: 'center' as const,
-      gap: spacing.md,
-      marginTop: spacing.md,
-    },
-    bottom: {
-      marginTop: 'auto' as const,
-    },
-    ratingArea: {
-      flex: 1,
-      justifyContent: 'center' as const,
-      paddingVertical: spacing.xl,
-    },
-    ratingQuestion: {
-      color: colors.ink,
-      fontFamily: typography.bengaliMedium,
-      fontSize: 20,
-      lineHeight: 31,
-      marginBottom: spacing.xl,
-    },
-    ratings: {
-      gap: spacing.sm,
-      marginBottom: spacing.xl,
-    },
-    rating: {
-      minHeight: 58,
-      paddingHorizontal: spacing.lg,
-      borderRadius: radius.md,
-      backgroundColor: colors.surface,
-      borderColor: colors.line,
-      borderWidth: 1,
-      flexDirection: 'row' as const,
-      alignItems: 'center' as const,
-      gap: spacing.md,
-    },
-    ratingSelected: {
-      backgroundColor: colors.mint,
-      borderColor: colors.primary,
-    },
-    ratingCheck: {
-      width: 24,
-      height: 24,
-      borderRadius: 12,
-      backgroundColor: colors.primary,
-      alignItems: 'center' as const,
-      justifyContent: 'center' as const,
-    },
-    ratingLabel: {
-      color: colors.ink,
-      fontFamily: typography.bengaliMedium,
-      fontSize: 15,
-    },
-    ratingLabelSelected: {
-      color: colors.primary,
-    },
+    sessionScreen: { paddingBottom: spacing.md },
+    center: { flex: 1, alignItems: 'center' as const, justifyContent: 'center' as const },
+    header: { minHeight: 104, flexDirection: 'row' as const, alignItems: 'center' as const, gap: spacing.md },
+    headerCopy: { flex: 1 },
+    phaseLabel: { color: colors.gold, fontFamily: typography.bengaliMedium, fontSize: 11, textTransform: 'uppercase' as const },
+    title: { color: colors.ink, fontFamily: typography.bengaliMedium, fontSize: 23, lineHeight: 32 },
+    hint: { color: colors.muted, fontFamily: typography.bengali, fontSize: 12, lineHeight: 19, marginTop: 2 },
+    progressTrack: { height: 3, backgroundColor: colors.line, overflow: 'hidden' as const },
+    progressFill: { height: '100%' as const, backgroundColor: colors.gold },
+    contextRow: { minHeight: 48, flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'space-between' as const },
+    surahName: { color: colors.primary, fontFamily: typography.bengaliMedium, fontSize: 13 },
+    counter: { color: colors.muted, fontFamily: typography.bengali, fontSize: 12 },
+    mushaf: { flexGrow: 1, justifyContent: 'center' as const, minHeight: 260, paddingVertical: spacing.lg },
+    precedingAyah: { opacity: 0.72 },
+    linkLabel: { color: colors.gold, fontFamily: typography.bengaliMedium, fontSize: 11 },
+    linkDivider: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: spacing.sm, paddingVertical: spacing.md, borderBottomColor: colors.gold, borderBottomWidth: 1 },
+    linkDividerText: { color: colors.muted, fontFamily: typography.bengali, fontSize: 12 },
+    feedback: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: spacing.sm, padding: spacing.md, backgroundColor: colors.paleGold, borderRadius: radius.md, marginBottom: spacing.sm },
+    feedbackText: { flex: 1, color: colors.ink, fontFamily: typography.bengali, fontSize: 12, lineHeight: 19 },
+    controlDock: { paddingTop: spacing.md, borderTopColor: colors.line, borderTopWidth: 1, gap: spacing.sm },
+    textAction: { minHeight: 46, flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'center' as const, gap: spacing.sm },
+    textActionLabel: { color: colors.primary, fontFamily: typography.bengaliMedium, fontSize: 13 },
+    masteryRow: { flexDirection: 'row' as const, justifyContent: 'space-between' as const, gap: spacing.xs, marginBottom: spacing.sm },
+    masteryItem: { flex: 1, alignItems: 'center' as const, gap: spacing.xs },
+    masteryDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.line },
+    masteryDotActive: { backgroundColor: colors.gold },
+    masteryLabel: { color: colors.muted, fontFamily: typography.bengali, fontSize: 10, textAlign: 'center' as const },
+    masteryLabelActive: { color: colors.ink, fontFamily: typography.bengaliMedium },
+    ratingGrid: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: spacing.sm, marginBottom: spacing.sm },
+    ratingOption: { width: '48.5%' as const, minHeight: 58, flexDirection: 'row' as const, alignItems: 'center' as const, gap: spacing.sm, padding: spacing.sm, borderRadius: radius.md, backgroundColor: colors.surface, borderColor: colors.line, borderWidth: 1 },
+    ratingSelected: { backgroundColor: colors.mint, borderColor: colors.primary },
+    ratingMark: { width: 22, height: 22, borderRadius: 11, borderColor: colors.line, borderWidth: 1, alignItems: 'center' as const, justifyContent: 'center' as const },
+    ratingMarkSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
+    ratingCopy: { flex: 1 },
+    ratingLabel: { color: colors.ink, fontFamily: typography.bengaliMedium, fontSize: 13 },
+    ratingLabelSelected: { color: colors.primary },
+    ratingNote: { color: colors.muted, fontFamily: typography.bengali, fontSize: 9, lineHeight: 14 },
+    reviewQuestion: { color: colors.ink, fontFamily: typography.bengaliMedium, fontSize: 14, textAlign: 'center' as const },
+    surahTestHero: { flex: 1, alignItems: 'center' as const, justifyContent: 'center' as const, borderTopColor: colors.gold, borderBottomColor: colors.gold, borderTopWidth: 1, borderBottomWidth: 1 },
+    bismillah: { color: colors.gold, fontFamily: typography.arabicBold, fontSize: 20, lineHeight: 38 },
+    surahTestTitle: { color: colors.ink, fontFamily: typography.bengaliMedium, fontSize: 28, marginTop: spacing.lg },
+    surahTestArabic: { color: colors.primary, fontFamily: typography.arabicBold, fontSize: 28 },
+    closedMushaf: { marginTop: spacing.xl, flexDirection: 'row' as const, alignItems: 'center' as const, gap: spacing.sm, paddingHorizontal: spacing.lg, paddingVertical: spacing.md, borderRadius: radius.md, backgroundColor: colors.surface, borderColor: colors.line, borderWidth: 1 },
+    closedText: { color: colors.muted, fontFamily: typography.bengali, fontSize: 12 },
+    recordDock: { paddingTop: spacing.lg, gap: spacing.sm },
+    inlineActions: { flexDirection: 'row' as const, justifyContent: 'center' as const, gap: spacing.md },
   };
 }

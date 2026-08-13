@@ -1,33 +1,41 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
 import { useApp } from '@/app-state/provider';
 import { useThemedStyles } from '@/theme/create-styles';
-import { useTypography } from '@/theme/theme-context';
+import { useThemeColors, useTypography } from '@/theme/theme-context';
 import type { QuranAyah } from '@/domain/types';
-import { radius, spacing, type ColorPalette } from '@/theme/tokens';
+import { getWordSkeletons } from '@/domain/tajweed-words';
+import {
+  ARABIC_READING_LINE_HEIGHT,
+  ARABIC_READING_SIZE,
+  radius,
+  spacing,
+  tajweedColors,
+  type ColorPalette,
+} from '@/theme/tokens';
 
-const BASE_SIZE = 34;
-const BASE_LINE_HEIGHT = 60;
+export type MaskLevel = 0 | 1 | 2;
 
-/**
- * Word-by-word self-testing: every word starts hidden behind a blank tile.
- * Tap a tile to reveal that word; tap a revealed word to hide it again.
- * Each *new* reveal counts as a hint, same as the old whole-ayah toggle did.
- */
+/** Graduated word cues. Revealing a masked word is recorded as a hint. */
 export function MaskedAyah({
   ayah,
+  maskLevel,
   onReveal,
 }: {
   ayah: QuranAyah;
+  maskLevel: MaskLevel;
   onReveal: () => void;
 }) {
   const { profile } = useApp();
   const scale = profile?.arabicTextScale ?? 1;
   const styles = useThemedStyles(createStyles);
+  const colors = useThemeColors();
   const fonts = useTypography();
-  const words = ayah.arabic.split(/\s+/).filter(Boolean);
+  const words = getWordSkeletons(ayah.key, ayah.arabic);
   const [revealed, setRevealed] = useState<Set<number>>(() => new Set());
+
+  useEffect(() => setRevealed(new Set()), [ayah.key, maskLevel]);
 
   function toggleWord(index: number) {
     setRevealed((current) => {
@@ -43,14 +51,21 @@ export function MaskedAyah({
   }
 
   return (
-    <View style={styles.row} accessibilityLabel="আয়াতের শব্দগুলো লুকানো, টাচ করে দেখুন">
-      {words.map((word, index) => {
-        const isRevealed = revealed.has(index);
+    <View
+      style={styles.row}
+      accessibilityLabel={
+        maskLevel === 0 ? 'সম্পূর্ণ আয়াত দেখা যাচ্ছে' : 'শব্দে ট্যাপ করলে সম্পূর্ণ শব্দ দেখা যাবে'
+      }
+    >
+      {words.map(({ word, skeleton, rule }, index) => {
+        const isRevealed = maskLevel === 0 || revealed.has(index);
         return (
           <Pressable
             key={index}
             accessibilityRole="button"
+            accessibilityState={{ disabled: maskLevel === 0 }}
             accessibilityLabel={isRevealed ? word : `শব্দ ${index + 1}, লুকানো`}
+            disabled={maskLevel === 0}
             onPress={() => toggleWord(index)}
             style={({ pressed }) => [
               styles.tile,
@@ -64,12 +79,26 @@ export function MaskedAyah({
                   styles.word,
                   {
                     fontFamily: fonts.arabicBold,
-                    fontSize: BASE_SIZE * scale,
-                    lineHeight: BASE_LINE_HEIGHT * scale,
+                    fontSize: ARABIC_READING_SIZE * scale,
+                    lineHeight: ARABIC_READING_LINE_HEIGHT * scale,
                   },
                 ]}
               >
                 {word}
+              </Text>
+            ) : maskLevel === 1 ? (
+              <Text
+                style={[
+                  styles.skeleton,
+                  {
+                    color: rule ? tajweedColors[rule] : colors.primary,
+                    fontFamily: fonts.arabicBold,
+                    fontSize: ARABIC_READING_SIZE * scale,
+                    lineHeight: ARABIC_READING_LINE_HEIGHT * scale,
+                  },
+                ]}
+              >
+                {skeleton}
               </Text>
             ) : (
               <View
@@ -110,6 +139,11 @@ function createStyles(colors: ColorPalette) {
     word: {
       color: colors.ink,
       writingDirection: 'rtl' as const,
+    },
+    skeleton: {
+      writingDirection: 'rtl' as const,
+      minWidth: 22,
+      textAlign: 'center' as const,
     },
     blank: {
       height: 20,

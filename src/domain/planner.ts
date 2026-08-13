@@ -16,6 +16,28 @@ export interface BuildDailyPlanInput {
   availableMinutes?: number;
 }
 
+export function getPrecedingAyahKeys(
+  ayahKey: AyahKey,
+  contentPack: QuranContentPack,
+  allowedKeys: Iterable<AyahKey>,
+  count = 1,
+): AyahKey[] {
+  const current = contentPack.ayahs.find((ayah) => ayah.key === ayahKey);
+  if (!current || count <= 0) return [];
+  const allowed = new Set(allowedKeys);
+  return contentPack.ayahs
+    .filter(
+      (ayah) =>
+        ayah.surahNumber === current.surahNumber &&
+        ayah.ayahNumber < current.ayahNumber &&
+        allowed.has(ayah.key),
+    )
+    .sort((a, b) => b.ayahNumber - a.ayahNumber)
+    .slice(0, count)
+    .reverse()
+    .map((ayah) => ayah.key);
+}
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 function makeStep(

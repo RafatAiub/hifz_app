@@ -92,6 +92,22 @@ export interface SessionPlan {
 
 export type RecallRating = 'again' | 'hard' | 'good' | 'easy';
 
+export interface AyahOutcome {
+  ayahKey: AyahKey;
+  rating: RecallRating;
+  hints: number;
+  repetitions: number;
+  cleanLevelTwoPasses: number;
+  linkedWithPrevious: boolean;
+}
+
+export interface SurahTestResult {
+  surahNumber: number;
+  recordingUri: string | null;
+  reviewMode: 'self' | 'teacher';
+  completedUnaided: boolean;
+}
+
 export interface SessionResult {
   id: string;
   planId: string;
@@ -101,6 +117,10 @@ export interface SessionResult {
   /** Subset of completedAyahKeys that came from 'new' hifz steps (not
    * warmup/sabqi/manzil review) -- used to compute memorization velocity. */
   newAyahKeys: AyahKey[];
+  /** Per-ayah evidence for new hifz. Optional keeps older persisted events readable. */
+  ayahOutcomes?: AyahOutcome[];
+  /** Whole-surah gate. Automatic ASR is intentionally not authoritative in v1. */
+  surahTest?: SurahTestResult | null;
   repetitions: number;
   hints: number;
   rating: RecallRating;

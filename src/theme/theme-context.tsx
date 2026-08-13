@@ -21,7 +21,7 @@ const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 export function ThemeProvider({ children }: PropsWithChildren) {
   const systemScheme = useColorScheme();
-  const { profile, setThemePreference } = useApp();
+  const { profile, ready, setThemePreference } = useApp();
   const preference = profile?.themePreference ?? 'system';
   const mode: ThemeMode =
     preference === 'system' ? (systemScheme === 'dark' ? 'dark' : 'light') : preference;
@@ -38,6 +38,8 @@ export function ThemeProvider({ children }: PropsWithChildren) {
     () => ({ mode, preference, colors, setPreference }),
     [mode, preference, colors, setPreference],
   );
+
+  if (!ready) return null;
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }

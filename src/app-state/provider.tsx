@@ -20,6 +20,7 @@ import {
 } from '@/domain/stats';
 import type {
   AyahKey,
+  AyahOutcome,
   HifzVelocity,
   MemoryState,
   Milestone,
@@ -28,6 +29,7 @@ import type {
   SessionPlan,
   StreakState,
   StudentProfile,
+  SurahTestResult,
   SurahForecast,
   SurahProgress,
 } from '@/domain/types';
@@ -64,6 +66,8 @@ interface AppContextValue {
     hints: number;
     recordingUri: string | null;
     newAyahKeys: AyahKey[];
+    ayahOutcomes?: AyahOutcome[];
+    surahTest?: SurahTestResult | null;
   }): Promise<void>;
 }
 
@@ -251,12 +255,16 @@ export function AppProvider({ children }: PropsWithChildren) {
       hints,
       recordingUri,
       newAyahKeys,
+      ayahOutcomes = [],
+      surahTest = null,
     }: {
       rating: RecallRating;
       repetitions: number;
       hints: number;
       recordingUri: string | null;
       newAyahKeys: AyahKey[];
+      ayahOutcomes?: AyahOutcome[];
+      surahTest?: SurahTestResult | null;
     }) => {
       if (!profile || !plan) return;
       const now = new Date();
@@ -270,6 +278,8 @@ export function AppProvider({ children }: PropsWithChildren) {
         completedAt: now.toISOString(),
         completedAyahKeys,
         newAyahKeys,
+        ayahOutcomes,
+        surahTest,
         repetitions,
         hints,
         rating,
@@ -287,6 +297,12 @@ export function AppProvider({ children }: PropsWithChildren) {
 
       const memorized = new Set(profile.memorizedAyahKeys);
       completedAyahKeys.forEach((key) => memorized.add(key));
+      const ratingScore = { again: 0, hard: 1, good: 2, easy: 3 } as const;
+      const outcomeRatings: number[] = ayahOutcomes.map((outcome) => ratingScore[outcome.rating]);
+      const averageOutcome = outcomeRatings.length
+        ? outcomeRatings.reduce((sum, value) => sum + value, 0) / outcomeRatings.length
+        : ratingScore[rating];
+      const capacityDelta = averageOutcome >= 2.5 ? 0.05 : averageOutcome < 1 ? -0.05 : 0;
       const nextProfile: StudentProfile = {
         ...profile,
         memorizedAyahKeys: Array.from(memorized),
@@ -295,8 +311,7 @@ export function AppProvider({ children }: PropsWithChildren) {
           0.35,
           Math.min(
             1.5,
-            profile.capacityLinesPerMinute +
-              (rating === 'easy' ? 0.05 : rating === 'again' ? -0.05 : 0),
+            profile.capacityLinesPerMinute + capacityDelta,
           ),
         ),
         lastActiveAt: now.toISOString(),
@@ -304,20 +319,24 @@ export function AppProvider({ children }: PropsWithChildren) {
       };
 
       const byKey = new Map(memoryStates.map((state) => [state.ayahKey, state]));
+      const outcomesByKey = new Map(ayahOutcomes.map((outcome) => [outcome.ayahKey, outcome]));
       completedAyahKeys.forEach((ayahKey) => {
         const current = byKey.get(ayahKey);
-        const schedule = scheduleNextReview(current, rating, now);
+        const outcome = outcomesByKey.get(ayahKey);
+        const ayahRating = outcome?.rating ?? rating;
+        const ayahHints = outcome?.hints ?? hints;
+        const schedule = scheduleNextReview(current, ayahRating, now);
         byKey.set(ayahKey, {
           ayahKey,
-          strength: strengthFromRating(rating),
+          strength: strengthFromRating(ayahRating),
           lastReviewedAt: now.toISOString(),
           nextDueAt: schedule.nextDueAt,
-          hesitationCount: (current?.hesitationCount ?? 0) + (rating === 'hard' ? 1 : 0),
-          hintCount: (current?.hintCount ?? 0) + hints,
+          hesitationCount: (current?.hesitationCount ?? 0) + (ayahRating === 'hard' ? 1 : 0),
+          hintCount: (current?.hintCount ?? 0) + ayahHints,
           successfulRecalls:
-            (current?.successfulRecalls ?? 0) + (rating === 'again' ? 0 : 1),
+            (current?.successfulRecalls ?? 0) + (ayahRating === 'again' ? 0 : 1),
           failedRecalls:
-            (current?.failedRecalls ?? 0) + (rating === 'again' ? 1 : 0),
+            (current?.failedRecalls ?? 0) + (ayahRating === 'again' ? 1 : 0),
           easeFactor: schedule.easeFactor,
           intervalDays: schedule.intervalDays,
           repetitionCount: schedule.repetitionCount,

@@ -1,18 +1,16 @@
 import { router } from 'expo-router';
 import {
+  BookOpenCheck,
   Check,
   ChevronRight,
   Clock3,
   RotateCcw,
   Settings,
-  Sparkles,
 } from 'lucide-react-native';
 import { Pressable, Text, View } from 'react-native';
 
 import { useApp } from '@/app-state/provider';
 import { ActionButton, AppScreen, IconAction } from '@/components/ui';
-import { BrandMark } from '@/components/brand-mark';
-import { StreakBadge } from '@/components/streak-badge';
 import { useThemedStyles } from '@/theme/create-styles';
 import { useThemeColors } from '@/theme/theme-context';
 import { radius, spacing, typography, type ColorPalette } from '@/theme/tokens';
@@ -32,11 +30,17 @@ export default function TodayScreen() {
   const styles = useThemedStyles(createStyles);
   const breakpoint = useBreakpoint();
   const ringSize = breakpoint === 'compact' ? 68 : 90;
+  const newAyahs = plan?.steps
+    .filter((step) => step.kind === 'new')
+    .reduce((total, step) => total + step.ayahKeys.length, 0) ?? 0;
+  const reviewAyahs = plan?.steps
+    .filter((step) => step.kind !== 'new')
+    .reduce((total, step) => total + step.ayahKeys.length, 0) ?? 0;
 
   return (
     <AppScreen
-      eyebrow="আপনার হিফজ সহকারী"
-      title="আসসালামু আলাইকুম"
+      eyebrow="আপনার জন্য প্রস্তুত"
+      title="আজকের হিফজ"
       action={
         <IconAction
           label="সেটিংস"
@@ -45,28 +49,39 @@ export default function TodayScreen() {
         />
       }
     >
-      <View style={styles.brandRow}>
-        <BrandMark size={22} />
-        <Text style={styles.brandLabel}>Hifz</Text>
-      </View>
-
-      <View style={styles.streakRow}>
-        <StreakBadge streak={stats.streak} />
+      <View style={styles.identityRow}>
+        <View style={styles.wordmark}>
+          <Text style={styles.wordmarkArabic}>حِفْظ</Text>
+          <View>
+            <Text style={styles.wordmarkName}>HIFZ</Text>
+            <Text style={styles.wordmarkNote}>শান্তভাবে, প্রতিদিন</Text>
+          </View>
+        </View>
+        {stats.streak.currentStreak > 0 ? (
+          <Text style={styles.continuity}>{stats.streak.currentStreak} দিন ধারাবাহিক</Text>
+        ) : null}
       </View>
 
       <View style={styles.focusBand}>
         <View style={styles.focusCopy}>
           <View style={styles.readyRow}>
-            <Sparkles color={colors.gold} size={18} fill={colors.gold} />
+            <BookOpenCheck color={colors.gold} size={18} />
             <Text style={styles.readyText}>
-              {plan?.isRecoveryPlan ? 'আজ একটু হালকা রাখা হয়েছে' : 'আজকের plan তৈরি'}
+              {plan?.isRecoveryPlan ? 'আজ হালকা পুনরুদ্ধার' : 'আজকের পথ প্রস্তুত'}
             </Text>
           </View>
-          <Text style={styles.bigNumber}>{plan?.estimatedMinutes ?? minutes}</Text>
-          <Text style={styles.minuteLabel}>মিনিট, শুধু আপনার জন্য</Text>
+          <View style={styles.durationStatement}>
+            <Text style={styles.bigNumber}>{plan?.estimatedMinutes ?? minutes}</Text>
+            <Text style={styles.minuteLabel}>মিনিট</Text>
+          </View>
+          <View style={styles.planFacts}>
+            <Text style={styles.planFact}>{reviewAyahs} ঝালাই</Text>
+            <View style={styles.factDivider} />
+            <Text style={styles.planFact}>{newAyahs} নতুন আয়াত</Text>
+          </View>
         </View>
         <View style={[styles.ring, { width: ringSize, height: ringSize, borderRadius: ringSize / 2 }]}>
-          <Text style={styles.ringArabic}>اقرأ</Text>
+          <Text style={styles.ringArabic}>اقْرَأْ</Text>
         </View>
       </View>
 
@@ -121,7 +136,7 @@ export default function TodayScreen() {
             <View style={styles.stepCopy}>
               <Text style={styles.stepKind}>
                 {stepLabels[step.kind]}
-                {step.hasLeechItems ? ' · ⚠ আটকে থাকা আয়াত' : ''}
+                {step.hasLeechItems ? ' · বিশেষ ঝালাই' : ''}
               </Text>
               <Text style={styles.stepTitle}>{step.title}</Text>
               <Text style={styles.stepMeta}>
@@ -147,21 +162,38 @@ export default function TodayScreen() {
 
 function createStyles(colors: ColorPalette) {
   return {
-    brandRow: {
+    identityRow: {
       flexDirection: 'row' as const,
       alignItems: 'center' as const,
-      gap: spacing.xs,
-      marginBottom: spacing.md,
+      justifyContent: 'space-between' as const,
+      gap: spacing.md,
+      marginBottom: spacing.lg,
     },
-    brandLabel: {
-      color: colors.gold,
-      fontFamily: typography.bengaliMedium,
-      fontSize: 13,
-      letterSpacing: 1,
-    },
-    streakRow: {
+    wordmark: {
       flexDirection: 'row' as const,
-      marginBottom: spacing.md,
+      alignItems: 'center' as const,
+      gap: spacing.sm,
+    },
+    wordmarkArabic: {
+      color: colors.primary,
+      fontFamily: typography.arabicBold,
+      fontSize: 24,
+      lineHeight: 34,
+    },
+    wordmarkName: {
+      color: colors.ink,
+      fontFamily: typography.bengaliMedium,
+      fontSize: 11,
+    },
+    wordmarkNote: {
+      color: colors.muted,
+      fontFamily: typography.bengali,
+      fontSize: 10,
+    },
+    continuity: {
+      color: colors.muted,
+      fontFamily: typography.bengaliMedium,
+      fontSize: 11,
     },
     focusBand: {
       minHeight: 176,
@@ -195,12 +227,33 @@ function createStyles(colors: ColorPalette) {
       fontFamily: typography.bengaliMedium,
       fontSize: 47,
       lineHeight: 57,
+    },
+    durationStatement: {
+      flexDirection: 'row' as const,
+      alignItems: 'baseline' as const,
+      gap: spacing.sm,
       marginTop: spacing.sm,
     },
     minuteLabel: {
       color: colors.onSpotlightMuted,
       fontFamily: typography.bengali,
       fontSize: 14,
+    },
+    planFacts: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: spacing.sm,
+    },
+    planFact: {
+      color: colors.onSpotlightMuted,
+      fontFamily: typography.bengali,
+      fontSize: 12,
+    },
+    factDivider: {
+      width: 3,
+      height: 3,
+      borderRadius: 2,
+      backgroundColor: colors.gold,
     },
     ring: {
       borderWidth: 1,

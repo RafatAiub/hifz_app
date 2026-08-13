@@ -32,22 +32,22 @@ export interface ColorPalette {
 }
 
 export const lightPalette: ColorPalette = {
-  canvas: '#F6F4EE',
-  surface: '#FFFFFF',
+  canvas: '#F2F6F3',
+  surface: '#FFFEFC',
   surfaceElevated: '#FFFFFF',
-  ink: '#15231D',
-  muted: '#5E6E66',
-  line: '#E3E0D5',
-  primary: '#155C43',
-  primaryPressed: '#0E4632',
-  mint: '#E1EFE6',
+  ink: '#13211A',
+  muted: '#5B6B63',
+  line: '#D8E1DB',
+  primary: '#0E6146',
+  primaryPressed: '#094A35',
+  mint: '#E2F0E8',
   coral: '#E76F51',
-  gold: '#B8862E',
-  paleGold: '#F6EDCF',
+  gold: '#A87926',
+  paleGold: '#F6F0DD',
   danger: '#B83A3A',
   white: '#FFFFFF',
   overlay: 'rgba(15, 23, 18, 0.5)',
-  spotlight: '#122A20',
+  spotlight: '#10271D',
   onSpotlight: '#F3F7F4',
   onSpotlightMuted: '#B9CFC2',
   elevation: {
@@ -103,7 +103,7 @@ export const spacing = {
 export const radius = {
   sm: 4,
   md: 8,
-  lg: 16,
+  lg: 8,
   full: 999,
 } as const;
 
@@ -119,6 +119,9 @@ export const typography = {
   amiri: 'Amiri',
   amiriBold: 'AmiriBold',
 } as const;
+
+export const ARABIC_READING_SIZE = 36;
+export const ARABIC_READING_LINE_HEIGHT = 64;
 
 /** Resolves the reading-content font families for the user's chosen
  * Arabic script and Bengali family. UI chrome (buttons, nav, labels)
