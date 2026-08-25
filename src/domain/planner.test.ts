@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import { quranDemoPack } from '@/data/quran-pack';
-import { buildDailyPlan, getPrecedingAyahKeys, scheduleNextReview } from '@/domain/planner';
+import {
+  buildDailyPlan,
+  getPrecedingAyahKeys,
+  normalizeSurahOrder,
+  scheduleNextReview,
+} from '@/domain/planner';
 import type { MemoryState, StudentProfile } from '@/domain/types';
 
 function profile(overrides: Partial<StudentProfile> = {}): StudentProfile {
@@ -16,8 +21,10 @@ function profile(overrides: Partial<StudentProfile> = {}): StudentProfile {
     mushafLayout: 'indopak-16',
     themePreference: 'system',
     arabicTextScale: 1,
-    arabicFont: 'naskh',
+    arabicFont: 'uthmanic',
     uiFont: 'sans',
+    surahOrder: normalizeSurahOrder([], quranDemoPack),
+    maxNewAyahsPerSession: 3,
     lastActiveAt: null,
     createdAt: '2026-07-01T00:00:00.000Z',
     updatedAt: '2026-07-01T00:00:00.000Z',
@@ -150,6 +157,71 @@ describe('scheduleNextReview', () => {
     }
     expect(result.consecutiveAgainCount).toBe(4);
     expect(result.isLeech).toBe(true);
+  });
+});
+
+describe('buildDailyPlan surah order + session cap', () => {
+  const now = new Date('2026-07-28T06:00:00.000Z');
+
+  it('offers new ayahs from the first surah in the user-chosen order', () => {
+    const result = buildDailyPlan({
+      profile: profile({ surahOrder: normalizeSurahOrder([93, 78], quranDemoPack) }),
+      memoryStates: [],
+      contentPack: quranDemoPack,
+      now,
+    });
+    const newStep = result.steps.find((step) => step.kind === 'new');
+    expect(newStep?.ayahKeys.every((key) => key.startsWith('93:'))).toBe(true);
+  });
+
+  it('moves to the next ordered surah once the first is fully memorized', () => {
+    const surah93Keys = quranDemoPack.ayahs
+      .filter((a) => a.surahNumber === 93)
+      .map((a) => a.key);
+    const result = buildDailyPlan({
+      profile: profile({
+        surahOrder: normalizeSurahOrder([93, 78], quranDemoPack),
+        memorizedAyahKeys: surah93Keys,
+      }),
+      memoryStates: [],
+      contentPack: quranDemoPack,
+      now,
+    });
+    const newStep = result.steps.find((step) => step.kind === 'new');
+    expect(newStep?.ayahKeys.every((key) => key.startsWith('78:'))).toBe(true);
+  });
+
+  it('never offers more new ayahs than the configured per-session cap', () => {
+    const result = buildDailyPlan({
+      profile: profile({ maxNewAyahsPerSession: 1, availableMinutes: 45 }),
+      memoryStates: [],
+      contentPack: quranDemoPack,
+      now,
+    });
+    const newStep = result.steps.find((step) => step.kind === 'new');
+    expect(newStep?.ayahKeys.length).toBeLessThanOrEqual(1);
+  });
+});
+
+describe('normalizeSurahOrder', () => {
+  it('keeps the user-chosen surahs first, in their order', () => {
+    const order = normalizeSurahOrder([100, 79], quranDemoPack);
+    expect(order.slice(0, 2)).toEqual([100, 79]);
+  });
+
+  it('appends every remaining surah exactly once, ascending', () => {
+    const order = normalizeSurahOrder([100, 79], quranDemoPack);
+    expect(new Set(order).size).toBe(quranDemoPack.surahs.length);
+    const remainder = order.slice(2);
+    expect(remainder).toEqual([...remainder].sort((a, b) => a - b));
+  });
+
+  it('drops duplicate and invalid surah numbers', () => {
+    const order = normalizeSurahOrder([78, 78, 9999, -1], quranDemoPack);
+    expect(order[0]).toBe(78);
+    expect(order).not.toContain(9999);
+    expect(order).not.toContain(-1);
+    expect(new Set(order).size).toBe(order.length);
   });
 });
 

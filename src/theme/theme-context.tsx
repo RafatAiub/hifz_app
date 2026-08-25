@@ -67,7 +67,7 @@ export function useThemeMode() {
 export function useTypography() {
   const { profile } = useApp();
   return useMemo(
-    () => resolveTypography(profile?.arabicFont ?? 'naskh', profile?.uiFont ?? 'sans'),
+    () => resolveTypography(profile?.arabicFont ?? 'uthmanic', profile?.uiFont ?? 'sans'),
     [profile?.arabicFont, profile?.uiFont],
   );
 }

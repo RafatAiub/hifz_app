@@ -10,7 +10,7 @@ import {
 } from 'react';
 
 import { quranDemoPack } from '@/data/quran-pack';
-import { buildDailyPlan, scheduleNextReview } from '@/domain/planner';
+import { buildDailyPlan, normalizeSurahOrder, scheduleNextReview } from '@/domain/planner';
 import {
   computeMilestones,
   computeStreak,
@@ -58,6 +58,8 @@ interface AppContextValue {
   setArabicTextScale(scale: number): Promise<void>;
   setArabicFont(font: StudentProfile['arabicFont']): Promise<void>;
   setUiFont(font: StudentProfile['uiFont']): Promise<void>;
+  setSurahOrder(order: number[]): Promise<void>;
+  setMaxNewAyahsPerSession(count: number): Promise<void>;
   setSurahMemorized(surahNumber: number, memorized: boolean): Promise<void>;
   refreshPlan(minutes?: number): void;
   completeSession(input: {
@@ -87,8 +89,10 @@ function makeDefaultProfile(now: Date): StudentProfile {
     mushafLayout: 'indopak-16',
     themePreference: 'system',
     arabicTextScale: 1,
-    arabicFont: 'naskh',
+    arabicFont: 'uthmanic',
     uiFont: 'sans',
+    surahOrder: normalizeSurahOrder([], quranDemoPack),
+    maxNewAyahsPerSession: 3,
     lastActiveAt: null,
     createdAt: iso,
     updatedAt: iso,
@@ -215,6 +219,50 @@ export function AppProvider({ children }: PropsWithChildren) {
       setProfile(nextProfile);
     },
     [profile],
+  );
+
+  const setSurahOrder = useCallback(
+    async (order: number[]) => {
+      if (!profile) return;
+      const nextProfile: StudentProfile = {
+        ...profile,
+        surahOrder: normalizeSurahOrder(order, quranDemoPack),
+        updatedAt: new Date().toISOString(),
+      };
+      await repository.saveProfile(nextProfile);
+      setProfile(nextProfile);
+      setPlan(
+        buildDailyPlan({
+          profile: nextProfile,
+          memoryStates,
+          contentPack: quranDemoPack,
+          now: new Date(),
+        }),
+      );
+    },
+    [memoryStates, profile],
+  );
+
+  const setMaxNewAyahsPerSession = useCallback(
+    async (count: number) => {
+      if (!profile) return;
+      const nextProfile: StudentProfile = {
+        ...profile,
+        maxNewAyahsPerSession: Math.max(1, Math.round(count)),
+        updatedAt: new Date().toISOString(),
+      };
+      await repository.saveProfile(nextProfile);
+      setProfile(nextProfile);
+      setPlan(
+        buildDailyPlan({
+          profile: nextProfile,
+          memoryStates,
+          contentPack: quranDemoPack,
+          now: new Date(),
+        }),
+      );
+    },
+    [memoryStates, profile],
   );
 
   const setSurahMemorized = useCallback(
@@ -403,6 +451,8 @@ export function AppProvider({ children }: PropsWithChildren) {
       setArabicTextScale,
       setArabicFont,
       setUiFont,
+      setSurahOrder,
+      setMaxNewAyahsPerSession,
       setSurahMemorized,
       refreshPlan,
       completeSession,
@@ -418,6 +468,8 @@ export function AppProvider({ children }: PropsWithChildren) {
       setArabicTextScale,
       setArabicFont,
       setUiFont,
+      setSurahOrder,
+      setMaxNewAyahsPerSession,
       setSurahMemorized,
       stats,
     ],

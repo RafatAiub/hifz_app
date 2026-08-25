@@ -11,8 +11,16 @@ export interface StudentProfile {
   mushafLayout: 'indopak-16';
   themePreference: 'system' | 'light' | 'dark';
   arabicTextScale: number;
-  arabicFont: 'naskh' | 'amiri';
+  arabicFont: 'uthmanic' | 'amiri';
   uiFont: 'sans' | 'serif';
+  /** Surah numbers (78-114) in the order the user wants to memorize them.
+   * Always contains every Juz Amma surah exactly once -- see
+   * normalizeSurahOrder() in domain/planner.ts. Drives which surah's ayahs
+   * the planner offers next for new hifz. */
+  surahOrder: number[];
+  /** Upper bound on new (not-yet-memorized) ayahs offered per session,
+   * regardless of how much time/capacity would otherwise allow. */
+  maxNewAyahsPerSession: number;
   lastActiveAt: string | null;
   createdAt: string;
   updatedAt: string;

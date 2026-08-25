@@ -1,6 +1,17 @@
 import { createClient } from '@supabase/supabase-js';
 import { router } from 'expo-router';
-import { ArrowLeft, Bell, Check, Cloud, Moon, ShieldCheck, Sun, SunMoon } from 'lucide-react-native';
+import {
+  ArrowLeft,
+  Bell,
+  Check,
+  ChevronDown,
+  ChevronUp,
+  Cloud,
+  Moon,
+  ShieldCheck,
+  Sun,
+  SunMoon,
+} from 'lucide-react-native';
 import { useMemo, useState } from 'react';
 import {
   Pressable,
@@ -12,6 +23,7 @@ import {
 import { useApp } from '@/app-state/provider';
 import { ActionButton, AppScreen, IconAction } from '@/components/ui';
 import { quranDemoPack } from '@/data/quran-pack';
+import { normalizeSurahOrder } from '@/domain/planner';
 import { scheduleDailyReminder } from '@/services/reminders';
 import { syncPendingEvents } from '@/sync/sync-service';
 import { useThemedStyles } from '@/theme/create-styles';
@@ -32,6 +44,8 @@ export default function SettingsScreen() {
     setArabicTextScale,
     setArabicFont,
     setUiFont,
+    setSurahOrder,
+    setMaxNewAyahsPerSession,
     setSurahMemorized,
     repository,
   } = useApp();
@@ -58,6 +72,22 @@ export default function SettingsScreen() {
       ).length,
     [memorizedSet],
   );
+
+  const orderedSurahs = useMemo(() => {
+    const order = normalizeSurahOrder(profile?.surahOrder ?? [], quranDemoPack);
+    const byNumber = new Map(quranDemoPack.surahs.map((surah) => [surah.number, surah]));
+    return order.map((number) => byNumber.get(number)!).filter(Boolean);
+  }, [profile?.surahOrder]);
+
+  function moveSurah(index: number, direction: -1 | 1) {
+    const target = index + direction;
+    if (target < 0 || target >= orderedSurahs.length) return;
+    const next = orderedSurahs.map((surah) => surah.number);
+    const temp = next[index]!;
+    next[index] = next[target]!;
+    next[target] = temp;
+    void setSurahOrder(next);
+  }
 
   async function enableReminder() {
     const enabled = await scheduleDailyReminder(reminderTime);
@@ -188,26 +218,26 @@ export default function SettingsScreen() {
       <View style={styles.choices}>
         {(
           [
-            ['naskh', 'نسخ', 'নাসখ'],
+            ['uthmanic', 'حفص عثماني', 'উসমানি হাফস'],
             ['amiri', 'أميري', 'আমিরি'],
           ] as const
         ).map(([value, arabicLabel, label]) => (
           <Pressable
             key={value}
             accessibilityRole="radio"
-            accessibilityState={{ checked: (profile?.arabicFont ?? 'naskh') === value }}
+            accessibilityState={{ checked: (profile?.arabicFont ?? 'uthmanic') === value }}
             onPress={() => void setArabicFont(value)}
             style={[
               styles.choice,
               styles.arabicChoice,
-              (profile?.arabicFont ?? 'naskh') === value && styles.choiceSelected,
+              (profile?.arabicFont ?? 'uthmanic') === value && styles.choiceSelected,
             ]}
           >
             <Text
               style={[
                 styles.arabicScalePreview,
                 value === 'amiri' && styles.amiriPreview,
-                (profile?.arabicFont ?? 'naskh') === value && styles.choiceTextSelected,
+                (profile?.arabicFont ?? 'uthmanic') === value && styles.choiceTextSelected,
               ]}
             >
               {arabicLabel}
@@ -215,7 +245,7 @@ export default function SettingsScreen() {
             <Text
               style={[
                 styles.choiceCaption,
-                (profile?.arabicFont ?? 'naskh') === value && styles.choiceTextSelected,
+                (profile?.arabicFont ?? 'uthmanic') === value && styles.choiceTextSelected,
               ]}
             >
               {label}
@@ -278,6 +308,71 @@ export default function SettingsScreen() {
           </Pressable>
         ))}
       </View>
+
+      <Text style={styles.sectionTitle}>প্রতি session-এ নতুন আয়াত</Text>
+      <View style={styles.choices}>
+        {[1, 2, 3, 5, 8].map((value) => (
+          <Pressable
+            key={value}
+            accessibilityRole="radio"
+            accessibilityState={{
+              checked: (profile?.maxNewAyahsPerSession ?? 3) === value,
+            }}
+            onPress={() => void setMaxNewAyahsPerSession(value)}
+            style={[
+              styles.choice,
+              (profile?.maxNewAyahsPerSession ?? 3) === value && styles.choiceSelected,
+            ]}
+          >
+            <Text
+              style={[
+                styles.choiceText,
+                (profile?.maxNewAyahsPerSession ?? 3) === value && styles.choiceTextSelected,
+              ]}
+            >
+              {value}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+
+      <View style={styles.divider} />
+
+      <Text style={styles.sectionTitle}>সূরার ক্রম</Text>
+      <Text style={styles.body}>
+        কোন সূরা আগে হিফজ করবেন, তা এখানে ঠিক করুন। App এই ক্রম অনুযায়ী নতুন আয়াত দেবে।
+      </Text>
+      <View style={styles.surahList}>
+        {orderedSurahs.map((surah, index) => (
+          <View key={surah.number} style={styles.orderRow}>
+            <Text style={styles.orderIndex}>{index + 1}</Text>
+            <Text style={styles.surahRowText} numberOfLines={1}>
+              {surah.number}. {surah.nameBn} · {surah.nameArabic}
+            </Text>
+            <View style={styles.orderButtons}>
+              <IconAction
+                label={`সূরা ${surah.nameBn} উপরে নিন`}
+                disabled={index === 0}
+                icon={<ChevronUp color={index === 0 ? colors.line : colors.primary} size={18} />}
+                onPress={() => moveSurah(index, -1)}
+              />
+              <IconAction
+                label={`সূরা ${surah.nameBn} নিচে নিন`}
+                disabled={index === orderedSurahs.length - 1}
+                icon={
+                  <ChevronDown
+                    color={index === orderedSurahs.length - 1 ? colors.line : colors.primary}
+                    size={18}
+                  />
+                }
+                onPress={() => moveSurah(index, 1)}
+              />
+            </View>
+          </View>
+        ))}
+      </View>
+
+      <View style={styles.divider} />
 
       <Text style={styles.sectionTitle}>Reminder</Text>
       <View style={styles.inline}>
@@ -495,6 +590,27 @@ function createStyles(colors: ColorPalette) {
       borderBottomColor: colors.line,
       borderBottomWidth: 1,
       backgroundColor: colors.surface,
+    },
+    orderRow: {
+      minHeight: 48,
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: spacing.sm,
+      paddingHorizontal: spacing.md,
+      borderBottomColor: colors.line,
+      borderBottomWidth: 1,
+      backgroundColor: colors.surface,
+    },
+    orderIndex: {
+      width: 20,
+      color: colors.muted,
+      fontFamily: typography.bengaliMedium,
+      fontSize: 12,
+      textAlign: 'center' as const,
+    },
+    orderButtons: {
+      flexDirection: 'row' as const,
+      gap: spacing.xs,
     },
     checkbox: {
       width: 22,

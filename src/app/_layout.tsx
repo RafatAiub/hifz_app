@@ -38,8 +38,7 @@ export default function RootLayout() {
     NotoSansBengali: require('../../assets/fonts/NotoSansBengali-Regular.ttf'),
     NotoSansBengaliMedium: require('../../assets/fonts/NotoSansBengali-Medium.ttf'),
     NotoSerifBengali: require('../../assets/fonts/NotoSerifBengali-Regular.ttf'),
-    NotoNaskhArabic: require('../../assets/fonts/NotoNaskhArabic-Regular.ttf'),
-    NotoNaskhArabicBold: require('../../assets/fonts/NotoNaskhArabic-Bold.ttf'),
+    KFGQPCUthmanicScriptHAFS: require('../../assets/fonts/KFGQPCUthmanicScriptHAFS-Regular.otf'),
     Amiri: require('../../assets/fonts/Amiri-Regular.ttf'),
     AmiriBold: require('../../assets/fonts/Amiri-Bold.ttf'),
   });

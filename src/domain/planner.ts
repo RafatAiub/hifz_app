@@ -40,6 +40,30 @@ export function getPrecedingAyahKeys(
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+/**
+ * Returns a complete, deduplicated surah order: every surah present in
+ * `contentPack` appears exactly once. Surahs the user listed come first (in
+ * their chosen order); any surah they haven't ordered yet (a fresh profile,
+ * or new content added later) is appended afterwards in ascending number
+ * order, so new hifz selection always has a well-defined next surah.
+ */
+export function normalizeSurahOrder(order: number[], contentPack: QuranContentPack): number[] {
+  const validNumbers = new Set(contentPack.surahs.map((surah) => surah.number));
+  const seen = new Set<number>();
+  const normalized: number[] = [];
+  for (const surahNumber of order) {
+    if (validNumbers.has(surahNumber) && !seen.has(surahNumber)) {
+      seen.add(surahNumber);
+      normalized.push(surahNumber);
+    }
+  }
+  const remaining = contentPack.surahs
+    .map((surah) => surah.number)
+    .filter((number) => !seen.has(number))
+    .sort((a, b) => a - b);
+  return [...normalized, ...remaining];
+}
+
 function makeStep(
   kind: SessionStep['kind'],
   title: string,
@@ -115,9 +139,22 @@ export function buildDailyPlan({
     const capacity = profile.calibrationSessions < 7
       ? Math.min(profile.capacityLinesPerMinute, 0.6)
       : profile.capacityLinesPerMinute;
-    const maxNewAyahs = Math.max(1, Math.min(3, Math.floor((newMinutes * capacity) / 2)));
+    const sessionCap = Math.max(1, profile.maxNewAyahsPerSession || 3);
+    const maxNewAyahs = Math.min(
+      sessionCap,
+      Math.max(1, Math.min(3, Math.floor((newMinutes * capacity) / 2))),
+    );
+    const surahRank = new Map(
+      normalizeSurahOrder(profile.surahOrder, contentPack).map((number, index) => [number, index]),
+    );
     const newKeys = contentPack.ayahs
       .filter((ayah) => !memorized.has(ayah.key))
+      .sort((a, b) => {
+        const rankA = surahRank.get(a.surahNumber) ?? Number.MAX_SAFE_INTEGER;
+        const rankB = surahRank.get(b.surahNumber) ?? Number.MAX_SAFE_INTEGER;
+        if (rankA !== rankB) return rankA - rankB;
+        return a.ayahNumber - b.ayahNumber;
+      })
       .slice(0, maxNewAyahs)
       .map((ayah) => ayah.key);
 

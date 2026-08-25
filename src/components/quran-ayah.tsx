@@ -51,9 +51,6 @@ export function QuranAyahRow({
   const fonts = useTypography();
   return (
     <View style={[styles.row, active && styles.active]}>
-      <View style={styles.number}>
-        <Text style={styles.numberText}>{ayah.ayahNumber}</Text>
-      </View>
       <View style={styles.copy}>
         {maskLevel !== undefined || masked ? (
           <MaskedAyah
@@ -101,20 +98,6 @@ function createStyles(colors: ColorPalette) {
       marginHorizontal: -spacing.md,
       paddingHorizontal: spacing.md,
       borderRadius: radius.md,
-    },
-    number: {
-      width: 28,
-      height: 28,
-      borderRadius: 14,
-      backgroundColor: colors.primary,
-      alignItems: 'center' as const,
-      justifyContent: 'center' as const,
-      marginTop: 5,
-    },
-    numberText: {
-      color: colors.white,
-      fontFamily: typography.bengaliMedium,
-      fontSize: 12,
     },
     copy: {
       flex: 1,

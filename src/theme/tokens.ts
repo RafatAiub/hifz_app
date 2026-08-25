@@ -107,15 +107,20 @@ export const radius = {
   full: 999,
 } as const;
 
-export type ArabicFontChoice = 'naskh' | 'amiri';
+export type ArabicFontChoice = 'uthmanic' | 'amiri';
 export type UiFontChoice = 'sans' | 'serif';
 
 export const typography = {
   bengali: 'NotoSansBengali',
   bengaliMedium: 'NotoSansBengaliMedium',
   bengaliSerif: 'NotoSerifBengali',
-  arabic: 'NotoNaskhArabic',
-  arabicBold: 'NotoNaskhArabicBold',
+  // KFGQPC Uthmanic Script HAFS -- the official King Fahd Glorious Quran
+  // Printing Complex mushaf font, the same script used by quran.com,
+  // Tanzil and most Hafs-riwayah Quran apps. No bold cut exists for this
+  // font (authentic mushaf typography isn't synthetically bolded); reading
+  // emphasis comes from size, not weight.
+  arabic: 'KFGQPCUthmanicScriptHAFS',
+  arabicBold: 'KFGQPCUthmanicScriptHAFS',
   amiri: 'Amiri',
   amiriBold: 'AmiriBold',
 } as const;
@@ -125,7 +130,7 @@ export const ARABIC_READING_LINE_HEIGHT = 64;
 
 /** Resolves the reading-content font families for the user's chosen
  * Arabic script and Bengali family. UI chrome (buttons, nav, labels)
- * intentionally stays on the default Sans/Naskh pair for consistent,
+ * intentionally stays on the default Sans/Uthmanic pair for consistent,
  * predictable layout -- only Quran text and its translation switch. */
 export function resolveTypography(arabicFont: ArabicFontChoice, uiFont: UiFontChoice) {
   return {

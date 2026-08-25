@@ -46,7 +46,7 @@ import { useThemedStyles } from '@/theme/create-styles';
 import { useThemeColors } from '@/theme/theme-context';
 import { radius, spacing, typography, type ColorPalette } from '@/theme/tokens';
 
-type Phase = 'review' | 'listen' | 'attempt' | 'chain' | 'record' | 'rate' | 'surah-test';
+type Phase = 'review' | 'listen' | 'attempt' | 'chain' | 'rate' | 'surah-test';
 type MaskLevel = 0 | 1 | 2;
 type SessionUnit = { ayah: QuranAyah; kind: SessionStepKind };
 
@@ -77,11 +77,6 @@ const phaseCopy: Record<Phase, { label: string; title: string; hint: string }> =
     label: 'সংযোগ',
     title: 'আগের আয়াত থেকে মিলিয়ে বলুন',
     hint: 'হিফজ শুধু আলাদা আয়াত নয়; transition-টিও মনে থাকতে হবে।',
-  },
-  record: {
-    label: 'শুনানি',
-    title: 'নিজের তিলাওয়াত শুনুন',
-    hint: 'Record optional, কিন্তু নিজের কণ্ঠ শোনা hesitation ধরতে সাহায্য করে।',
   },
   rate: {
     label: 'Evidence',
@@ -208,7 +203,7 @@ export default function SessionScreen() {
       setFeedback('আয়াতটি তৈরি। এবার আগের আয়াতের সাথে সংযোগ করুন।');
       setPhase('chain');
     } else {
-      setPhase('record');
+      setPhase('rate');
     }
   }
 
@@ -222,7 +217,7 @@ export default function SessionScreen() {
       return;
     }
     setAttemptHints(0);
-    setPhase('record');
+    setPhase('rate');
   }
 
   async function toggleRecording() {
@@ -533,22 +528,6 @@ export default function SessionScreen() {
           </>
         ) : null}
 
-        {phase === 'record' ? (
-          <>
-            <ActionButton
-              label={recorderState.isRecording ? `Recording থামান · ${Math.round(recorderState.durationMillis / 1000)}s` : recordingUri ? 'আবার record করুন' : 'তিলাওয়াত record করুন'}
-              tone={recorderState.isRecording ? 'danger' : 'primary'}
-              icon={recorderState.isRecording ? <Square color={colors.white} size={19} /> : <Mic color={colors.white} size={20} />}
-              onPress={() => void toggleRecording()}
-            />
-            {waveformSamples.length ? <Waveform samples={waveformSamples} label="আপনার তিলাওয়াত" /> : null}
-            <Pressable style={styles.textAction} onPress={() => setPhase('rate')}>
-              <Text style={styles.textActionLabel}>{recordingUri ? 'শুনেছি · rating দিন' : 'এখন record করব না'}</Text>
-              <ArrowLeft color={colors.primary} size={18} />
-            </Pressable>
-          </>
-        ) : null}
-
         {phase === 'rate' ? (
           <>
             <RatingGrid selected={rating} onSelect={setRating} />
@@ -568,7 +547,7 @@ export default function SessionScreen() {
 }
 
 function phaseProgress(phase: Phase) {
-  return { review: 0.7, listen: 0.1, attempt: 0.4, chain: 0.65, record: 0.8, rate: 0.95, 'surah-test': 1 }[phase];
+  return { review: 0.7, listen: 0.1, attempt: 0.4, chain: 0.65, rate: 0.9, 'surah-test': 1 }[phase];
 }
 
 function SessionHeader({ label, title, hint, onClose }: { label: string; title: string; hint: string; onClose(): void }) {
