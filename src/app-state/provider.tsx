@@ -99,6 +99,24 @@ function makeDefaultProfile(now: Date): StudentProfile {
   };
 }
 
+/**
+ * Backfills any fields missing from a profile loaded from storage --
+ * necessary because a profile persisted by an earlier build of this app
+ * (before `arabicFont`, `uiFont`, `surahOrder` or `maxNewAyahsPerSession`
+ * existed) is missing those keys entirely, and buildDailyPlan() would
+ * throw trying to iterate an undefined surahOrder. Always re-normalizes
+ * surahOrder too, so it stays complete if the content pack ever grows.
+ */
+function hydrateProfile(raw: Partial<StudentProfile> | null, now: Date): StudentProfile {
+  const defaults = makeDefaultProfile(now);
+  if (!raw) return defaults;
+  return {
+    ...defaults,
+    ...raw,
+    surahOrder: normalizeSurahOrder(raw.surahOrder ?? [], quranDemoPack),
+  };
+}
+
 function strengthFromRating(rating: RecallRating) {
   return { again: 0.2, hard: 0.45, good: 0.7, easy: 0.9 }[rating];
 }
@@ -114,8 +132,15 @@ export function AppProvider({ children }: PropsWithChildren) {
     void (async () => {
       await repository.initialize();
       const now = new Date();
-      const savedProfile = (await repository.getProfile()) ?? makeDefaultProfile(now);
-      if (!(await repository.getProfile())) {
+      const rawProfile = await repository.getProfile();
+      const savedProfile = hydrateProfile(rawProfile, now);
+      const needsMigration =
+        !rawProfile ||
+        !Array.isArray(rawProfile.surahOrder) ||
+        typeof rawProfile.maxNewAyahsPerSession !== 'number' ||
+        typeof rawProfile.arabicFont !== 'string' ||
+        typeof rawProfile.uiFont !== 'string';
+      if (needsMigration) {
         await repository.saveProfile(savedProfile);
       }
       const savedStates = await repository.getMemoryStates();

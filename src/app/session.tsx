@@ -43,7 +43,7 @@ import type {
 } from '@/domain/types';
 import { resolveAudioSource } from '@/services/audio-cache';
 import { useThemedStyles } from '@/theme/create-styles';
-import { useThemeColors } from '@/theme/theme-context';
+import { useThemeColors, useTypography } from '@/theme/theme-context';
 import { radius, spacing, typography, type ColorPalette } from '@/theme/tokens';
 
 type Phase = 'review' | 'listen' | 'attempt' | 'chain' | 'rate' | 'surah-test';
@@ -101,6 +101,7 @@ export default function SessionScreen() {
   const { plan, profile, completeSession } = useApp();
   const colors = useThemeColors();
   const styles = useThemedStyles(createStyles);
+  const fonts = useTypography();
   const units = useMemo<SessionUnit[]>(() => {
     if (!plan) return [];
     return plan.steps.flatMap((step) =>
@@ -373,9 +374,9 @@ export default function SessionScreen() {
           onClose={() => router.back()}
         />
         <View style={styles.surahTestHero}>
-          <Text style={styles.bismillah}>بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ</Text>
+          <Text style={[styles.bismillah, { fontFamily: fonts.arabicBold }]}>بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ</Text>
           <Text style={styles.surahTestTitle}>সূরা {testSurah?.nameBn}</Text>
-          <Text style={styles.surahTestArabic}>{testSurah?.nameArabic}</Text>
+          <Text style={[styles.surahTestArabic, { fontFamily: fonts.arabicBold }]}>{testSurah?.nameArabic}</Text>
           <View style={styles.closedMushaf}>
             <Eye color={colors.gold} size={22} />
             <Text style={styles.closedText}>Mushaf বন্ধ · পুরো সূরা একসাথে</Text>

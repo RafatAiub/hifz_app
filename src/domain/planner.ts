@@ -47,11 +47,14 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  * or new content added later) is appended afterwards in ascending number
  * order, so new hifz selection always has a well-defined next surah.
  */
-export function normalizeSurahOrder(order: number[], contentPack: QuranContentPack): number[] {
+export function normalizeSurahOrder(
+  order: number[] | undefined | null,
+  contentPack: QuranContentPack,
+): number[] {
   const validNumbers = new Set(contentPack.surahs.map((surah) => surah.number));
   const seen = new Set<number>();
   const normalized: number[] = [];
-  for (const surahNumber of order) {
+  for (const surahNumber of order ?? []) {
     if (validNumbers.has(surahNumber) && !seen.has(surahNumber)) {
       seen.add(surahNumber);
       normalized.push(surahNumber);

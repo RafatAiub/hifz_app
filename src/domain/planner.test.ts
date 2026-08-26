@@ -160,6 +160,30 @@ describe('scheduleNextReview', () => {
   });
 });
 
+describe('buildDailyPlan with a pre-migration persisted profile', () => {
+  // Simulates a profile saved by an earlier build of the app, before
+  // surahOrder/maxNewAyahsPerSession existed -- storage.getProfile() just
+  // does `JSON.parse(...) as StudentProfile`, so an old row really does
+  // come back missing these keys at runtime despite the static type.
+  // provider.tsx's hydrateProfile() is what's supposed to backfill this
+  // before it ever reaches buildDailyPlan; this test guards the case
+  // where it doesn't (a defensive floor, not a substitute for that fix).
+  it('does not throw when surahOrder/maxNewAyahsPerSession are missing', () => {
+    const legacyProfile = profile();
+    delete (legacyProfile as Partial<StudentProfile>).surahOrder;
+    delete (legacyProfile as Partial<StudentProfile>).maxNewAyahsPerSession;
+
+    expect(() =>
+      buildDailyPlan({
+        profile: legacyProfile,
+        memoryStates: [],
+        contentPack: quranDemoPack,
+        now: new Date('2026-07-28T06:00:00.000Z'),
+      }),
+    ).not.toThrow();
+  });
+});
+
 describe('buildDailyPlan surah order + session cap', () => {
   const now = new Date('2026-07-28T06:00:00.000Z');
 
