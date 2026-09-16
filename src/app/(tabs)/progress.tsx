@@ -7,6 +7,7 @@ import { AppScreen } from '@/components/ui';
 import { HifzMap } from '@/components/hifz-map';
 import { ProgressRing } from '@/components/progress-ring';
 import { StreakBadge } from '@/components/streak-badge';
+import { quranDemoPack } from '@/data/quran-pack';
 import { useThemedStyles } from '@/theme/create-styles';
 import { useThemeColors } from '@/theme/theme-context';
 import { radius, spacing, typography, type ColorPalette } from '@/theme/tokens';
@@ -16,6 +17,9 @@ export default function ProgressScreen() {
   const colors = useThemeColors();
   const styles = useThemedStyles(createStyles);
   const calibration = Math.min(7, profile?.calibrationSessions ?? 0);
+  const totalAyahs = quranDemoPack.ayahs.length;
+  const overallProgress = totalAyahs > 0 ? stats.memorizedAyahs / totalAyahs : 0;
+  const maxWeeklyCount = Math.max(1, ...stats.weeklyActivity.map((d) => d.count));
 
   return (
     <AppScreen eyebrow="চাপ নয়, পরিষ্কার অগ্রগতি" title="আপনার অগ্রগতি">
@@ -27,6 +31,16 @@ export default function ProgressScreen() {
         <Text style={styles.heroLabel}>টি session সম্পন্ন</Text>
         <View style={styles.heroStreak}>
           <StreakBadge streak={stats.streak} />
+        </View>
+      </View>
+
+      <View style={styles.overallSection}>
+        <ProgressRing progress={overallProgress} size={120} strokeWidth={10} />
+        <View style={styles.overallCopy}>
+          <Text style={styles.overallTitle}>সার্বিক অগ্রগতি</Text>
+          <Text style={styles.overallValue}>
+            {stats.memorizedAyahs} / {totalAyahs}
+          </Text>
         </View>
       </View>
 
@@ -49,6 +63,23 @@ export default function ProgressScreen() {
       </View>
 
       <View style={styles.section}>
+        <Text style={styles.sectionTitle}>হিফজ স্বাস্থ্য</Text>
+        <Text style={styles.body}>
+          শুধু “কত জুজ” নয় — কতটুকু আসলে ধরে আছে তার সৎ চিত্র।
+        </Text>
+        <View style={styles.healthGrid}>
+          <HealthTile value={stats.hifzHealth.total} label="মোট মুখস্থ" tone={colors.ink} />
+          <HealthTile value={stats.hifzHealth.strong} label="শক্ত" tone={colors.primary} />
+          <HealthTile
+            value={stats.hifzHealth.needsRevision}
+            label="ঝালাই দরকার"
+            tone={colors.gold}
+          />
+          <HealthTile value={stats.hifzHealth.weak} label="দুর্বল" tone={colors.coral} />
+        </View>
+      </View>
+
+      <View style={styles.section}>
         <Text style={styles.sectionTitle}>App এখন যা শিখছে</Text>
         <View style={styles.calibrationRow}>
           <ProgressRing progress={calibration / 7} label={`${calibration}/৭`} />
@@ -56,6 +87,26 @@ export default function ProgressScreen() {
             কোন আয়াতে বেশি সময় লাগে, কতক্ষণ পড়লে ক্লান্তি আসে, আর কখন review দিলে
             সবচেয়ে ভালো মনে থাকে। প্রতিটি session-এর পর plan নিজে বদলাবে।
           </Text>
+        </View>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>গত ৭ দিন</Text>
+        <View style={styles.weeklyBars}>
+          {stats.weeklyActivity.map((day) => (
+            <View key={day.date} style={styles.weeklyBarColumn}>
+              <View style={styles.weeklyBarTrack}>
+                <View
+                  style={[
+                    styles.weeklyBarFill,
+                    { height: `${Math.max(4, (day.count / maxWeeklyCount) * 100)}%` },
+                  ]}
+                />
+              </View>
+              <Text style={styles.weeklyBarLabel}>{new Date(`${day.date}T00:00:00.000Z`).getUTCDate()}</Text>
+              <Text style={styles.weeklyBarCount}>{day.count}</Text>
+            </View>
+          ))}
         </View>
       </View>
 
@@ -143,6 +194,26 @@ function Metric({
   );
 }
 
+function HealthTile({
+  value,
+  label,
+  tone,
+}: {
+  value: number;
+  label: string;
+  tone: string;
+}) {
+  const styles = useThemedStyles(createStyles);
+  return (
+    <View style={styles.healthTile}>
+      <Text style={[styles.healthValue, { color: tone }]}>{value}</Text>
+      <Text style={styles.healthLabel} numberOfLines={1}>
+        {label}
+      </Text>
+    </View>
+  );
+}
+
 function createStyles(colors: ColorPalette) {
   return {
     hero: {
@@ -205,6 +276,33 @@ function createStyles(colors: ColorPalette) {
     },
     section: {
       marginTop: spacing.xxl,
+    },
+    healthGrid: {
+      marginTop: spacing.md,
+      flexDirection: 'row' as const,
+      gap: spacing.sm,
+    },
+    healthTile: {
+      flex: 1,
+      minHeight: 76,
+      borderRadius: radius.md,
+      backgroundColor: colors.surface,
+      borderColor: colors.line,
+      borderWidth: 1,
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+      gap: spacing.xs,
+      paddingHorizontal: 2,
+    },
+    healthValue: {
+      fontFamily: typography.bengaliMedium,
+      fontSize: 22,
+    },
+    healthLabel: {
+      color: colors.muted,
+      fontFamily: typography.bengali,
+      fontSize: 10,
+      textAlign: 'center' as const,
     },
     sectionTitle: {
       color: colors.ink,
@@ -296,6 +394,64 @@ function createStyles(colors: ColorPalette) {
       fontFamily: typography.bengaliMedium,
       fontSize: 15,
       marginBottom: spacing.xs,
+    },
+    overallSection: {
+      marginTop: spacing.xl,
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: spacing.lg,
+    },
+    overallCopy: {
+      flex: 1,
+    },
+    overallTitle: {
+      color: colors.ink,
+      fontFamily: typography.bengaliMedium,
+      fontSize: 15,
+    },
+    overallValue: {
+      color: colors.primary,
+      fontFamily: typography.bengaliMedium,
+      fontSize: 24,
+      marginTop: spacing.xs,
+    },
+    weeklyBars: {
+      marginTop: spacing.md,
+      flexDirection: 'row' as const,
+      alignItems: 'flex-end' as const,
+      justifyContent: 'space-between' as const,
+      gap: spacing.xs,
+      height: 120,
+    },
+    weeklyBarColumn: {
+      flex: 1,
+      alignItems: 'center' as const,
+      gap: spacing.xs,
+      height: '100%' as const,
+      justifyContent: 'flex-end' as const,
+    },
+    weeklyBarTrack: {
+      width: '100%' as const,
+      flex: 1,
+      justifyContent: 'flex-end' as const,
+      borderRadius: radius.sm,
+      backgroundColor: colors.mint,
+      overflow: 'hidden' as const,
+    },
+    weeklyBarFill: {
+      width: '100%' as const,
+      backgroundColor: colors.primary,
+      borderRadius: radius.sm,
+    },
+    weeklyBarLabel: {
+      color: colors.muted,
+      fontFamily: typography.bengali,
+      fontSize: 10,
+    },
+    weeklyBarCount: {
+      color: colors.ink,
+      fontFamily: typography.bengaliMedium,
+      fontSize: 10,
     },
   };
 }

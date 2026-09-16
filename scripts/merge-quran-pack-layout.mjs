@@ -18,6 +18,7 @@ for (const ayah of data.ayahs) {
   ayah.lineStart = entry.lineStart;
   ayah.lineEnd = entry.lineEnd;
   ayah.lineDataSource = 'quran-foundation-indopak-16';
+  ayah.lineDataVerified = true;
   updated += 1;
 }
 

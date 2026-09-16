@@ -4,6 +4,7 @@ import { quranDemoPack } from '@/data/quran-pack';
 import {
   buildDailyPlan,
   getPrecedingAyahKeys,
+  moveInOrder,
   normalizeSurahOrder,
   scheduleNextReview,
 } from '@/domain/planner';
@@ -25,6 +26,13 @@ function profile(overrides: Partial<StudentProfile> = {}): StudentProfile {
     uiFont: 'sans',
     surahOrder: normalizeSurahOrder([], quranDemoPack),
     maxNewAyahsPerSession: 3,
+    hifzStatus: 'partial',
+    teacherModeEnabled: false,
+    satSabaqCount: 7,
+    recentRevisionDays: 14,
+    manzilAyahsPerDay: 0,
+    revisionGateEnabled: true,
+    newSabaqPaused: false,
     lastActiveAt: null,
     createdAt: '2026-07-01T00:00:00.000Z',
     updatedAt: '2026-07-01T00:00:00.000Z',
@@ -32,7 +40,11 @@ function profile(overrides: Partial<StudentProfile> = {}): StudentProfile {
   };
 }
 
-function dueStates(count: number, strength = 0.3): MemoryState[] {
+function dueStates(
+  count: number,
+  strength = 0.3,
+  stage: MemoryState['stage'] = 'SABQI',
+): MemoryState[] {
   return quranDemoPack.ayahs.slice(0, count).map((ayah, index) => ({
     ayahKey: ayah.key,
     strength: strength + index * 0.05,
@@ -47,6 +59,11 @@ function dueStates(count: number, strength = 0.3): MemoryState[] {
     repetitionCount: 1,
     consecutiveAgainCount: 0,
     isLeech: false,
+    stage,
+    stageUpdatedAt: '2026-07-20T00:00:00.000Z',
+    approvedAt: '2026-07-20T00:00:00.000Z',
+    cleanRecallStreak: 1,
+    unresolvedMistakes: 0,
   }));
 }
 
@@ -99,7 +116,7 @@ describe('buildDailyPlan', () => {
     expect(result.steps[0]?.ayahKeys[0]).toBe(states[2]!.ayahKey);
   });
 
-  it('surfaces leech items ahead of other due items', () => {
+  it('routes a leech into the dedicated weakness-repair step', () => {
     const states = dueStates(3);
     states[2]!.isLeech = true;
     states[2]!.strength = 0.9;
@@ -109,8 +126,37 @@ describe('buildDailyPlan', () => {
       contentPack: quranDemoPack,
       now,
     });
-    expect(result.steps[0]?.ayahKeys[0]).toBe(states[2]!.ayahKey);
-    expect(result.steps.some((step) => step.hasLeechItems)).toBe(true);
+    const weakness = result.steps.find((step) => step.kind === 'weakness');
+    expect(weakness?.ayahKeys).toContain(states[2]!.ayahKey);
+    expect(weakness?.hasLeechItems).toBe(true);
+  });
+
+  it('blocks new Sabaq when the revision gate is shut and exposes the reason', () => {
+    const result = buildDailyPlan({
+      profile: profile({ newSabaqPaused: true }),
+      memoryStates: dueStates(3),
+      contentPack: quranDemoPack,
+      now,
+    });
+    expect(result.revisionGate.blocked).toBe(true);
+    expect(result.revisionGate.reason).toBe('teacher-paused');
+    expect(result.steps.some((step) => step.kind === 'new')).toBe(false);
+  });
+
+  it('keeps the Madrasa step order: manzil -> sabqi -> weakness -> new', () => {
+    const states = dueStates(4);
+    states[0]!.stage = 'MANZIL';
+    states[1]!.isLeech = true;
+    const result = buildDailyPlan({
+      profile: profile(),
+      memoryStates: states,
+      contentPack: quranDemoPack,
+      now,
+    });
+    const order = result.steps.map((step) => step.kind);
+    const rank = (kind: string) =>
+      ['manzil', 'sabqi', 'weakness', 'new'].indexOf(kind);
+    expect(order).toEqual([...order].sort((a, b) => rank(a) - rank(b)));
   });
 });
 
@@ -224,6 +270,51 @@ describe('buildDailyPlan surah order + session cap', () => {
     });
     const newStep = result.steps.find((step) => step.kind === 'new');
     expect(newStep?.ayahKeys.length).toBeLessThanOrEqual(1);
+  });
+
+  it('names the new step after the first surah in the chosen order', () => {
+    const result = buildDailyPlan({
+      profile: profile({ surahOrder: normalizeSurahOrder([93, 78], quranDemoPack) }),
+      memoryStates: [],
+      contentPack: quranDemoPack,
+      now,
+    });
+    const newStep = result.steps.find((step) => step.kind === 'new');
+    const surah93 = quranDemoPack.surahs.find((s) => s.number === 93)!;
+    expect(newStep?.title).toContain(surah93.nameBn);
+  });
+});
+
+describe('moveInOrder', () => {
+  it('moves an item one step toward the front', () => {
+    expect(moveInOrder([1, 2, 3, 4], 2, 1)).toEqual([1, 3, 2, 4]);
+  });
+
+  it('jumps an item to the front without dropping or duplicating the rest', () => {
+    const result = moveInOrder([10, 20, 30, 40, 50], 3, 0);
+    expect(result).toEqual([40, 10, 20, 30, 50]);
+    expect(new Set(result).size).toBe(5);
+  });
+
+  it('composes across rapid successive moves (no lost updates)', () => {
+    let order = [1, 2, 3, 4, 5];
+    order = moveInOrder(order, 4, 0);
+    order = moveInOrder(order, 4, 0);
+    order = moveInOrder(order, 4, 0);
+    expect(order).toEqual([3, 4, 5, 1, 2]);
+  });
+
+  it('clamps out-of-range indices instead of corrupting the list', () => {
+    expect(moveInOrder([1, 2, 3], -5, 99)).toEqual([2, 3, 1]);
+    expect(moveInOrder([1, 2, 3], 1, 1)).toEqual([1, 2, 3]);
+    expect(moveInOrder([], 0, 1)).toEqual([]);
+  });
+
+  it('returns a fresh array and never mutates the input', () => {
+    const input = [1, 2, 3];
+    const result = moveInOrder(input, 0, 2);
+    expect(result).not.toBe(input);
+    expect(input).toEqual([1, 2, 3]);
   });
 });
 

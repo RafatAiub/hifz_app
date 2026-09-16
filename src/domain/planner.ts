@@ -1,6 +1,16 @@
+import {
+  adaptiveSabaqSize,
+  buildManzilRotation,
+  buildSabqiSet,
+  deriveWeakQueue,
+  evaluateRevisionGate,
+  isMemorizedStage,
+  OLD_REVISION_STAGES,
+} from './hifz';
 import type {
   AyahKey,
   MemoryState,
+  MistakeRecord,
   QuranContentPack,
   RecallRating,
   SessionPlan,
@@ -14,6 +24,8 @@ export interface BuildDailyPlanInput {
   contentPack: QuranContentPack;
   now: Date;
   availableMinutes?: number;
+  /** Persistent mistake ledger -- feeds the weakness step and revision gate. */
+  mistakes?: MistakeRecord[];
 }
 
 export function getPrecedingAyahKeys(
@@ -67,6 +79,25 @@ export function normalizeSurahOrder(
   return [...normalized, ...remaining];
 }
 
+/**
+ * Pure array move: takes the item at `fromIndex` out and reinserts it at
+ * `toIndex`, returning a new array (the input is never mutated). Both
+ * indices are clamped into range, so an out-of-bounds call reorders rather
+ * than corrupts. This is the single path every surah-order edit goes
+ * through -- one step up/down or a jump to the top -- so chained calls
+ * always compose instead of racing each other.
+ */
+export function moveInOrder<T>(list: T[], fromIndex: number, toIndex: number): T[] {
+  const next = list.slice();
+  if (next.length === 0) return next;
+  const clamp = (value: number) => Math.max(0, Math.min(next.length - 1, Math.trunc(value)));
+  const from = clamp(fromIndex);
+  const to = clamp(toIndex);
+  const removed = next.splice(from, 1);
+  next.splice(to, 0, ...removed);
+  return next;
+}
+
 function makeStep(
   kind: SessionStep['kind'],
   title: string,
@@ -86,89 +117,210 @@ function makeStep(
   };
 }
 
+/** Ayahs already held (either historic flag, or a memorized-stage state). */
+function memorizedKeySet(
+  profile: StudentProfile,
+  memoryStates: MemoryState[],
+): Set<AyahKey> {
+  const set = new Set<AyahKey>(profile.memorizedAyahKeys);
+  for (const state of memoryStates) {
+    if (isMemorizedStage(state.stage)) set.add(state.ayahKey);
+  }
+  return set;
+}
+
+/** Next new-Sabaq ayahs: resume a teacher-assigned/in-progress LEARNING run
+ * first, then pull fresh from the chosen surah order. */
+function pickNewSabaqKeys(
+  profile: StudentProfile,
+  memoryStates: MemoryState[],
+  contentPack: QuranContentPack,
+  size: number,
+): AyahKey[] {
+  if (size <= 0) return [];
+  const surahRank = new Map(
+    normalizeSurahOrder(profile.surahOrder, contentPack).map(
+      (number, index) => [number, index] as const,
+    ),
+  );
+  const orderAyahs = (a: { surahNumber: number; ayahNumber: number }, b: typeof a) => {
+    const rankA = surahRank.get(a.surahNumber) ?? Number.MAX_SAFE_INTEGER;
+    const rankB = surahRank.get(b.surahNumber) ?? Number.MAX_SAFE_INTEGER;
+    if (rankA !== rankB) return rankA - rankB;
+    return a.ayahNumber - b.ayahNumber;
+  };
+
+  const inProgress = new Set(
+    memoryStates
+      .filter((s) => s.stage === 'LEARNING' || s.stage === 'SABAQ_READY')
+      .map((s) => s.ayahKey),
+  );
+  const memorized = memorizedKeySet(profile, memoryStates);
+  const picked = contentPack.ayahs
+    .filter((ayah) => inProgress.has(ayah.key))
+    .sort(orderAyahs)
+    .map((ayah) => ayah.key);
+
+  if (picked.length < size) {
+    const fresh = contentPack.ayahs
+      .filter((ayah) => !memorized.has(ayah.key) && !inProgress.has(ayah.key))
+      .sort(orderAyahs)
+      .map((ayah) => ayah.key);
+    picked.push(...fresh);
+  }
+  return picked.slice(0, size);
+}
+
+/**
+ * Retention-first daily plan. Step order is the Bangladesh/South-Asian
+ * Madrasa flow:  Manzil (old revision)  ->  Sabqi / Sat Sabaq  ->  weakness
+ * repair  ->  new Sabaq. New Sabaq only appears when the revision gate is
+ * open. There is no LLM in this path.
+ */
 export function buildDailyPlan({
   profile,
   memoryStates,
   contentPack,
   now,
   availableMinutes = profile.availableMinutes,
+  mistakes = [],
 }: BuildDailyPlanInput): SessionPlan {
   const budget = Math.max(5, Math.min(60, availableMinutes));
-  const due = memoryStates
-    .filter((state) => new Date(state.nextDueAt).getTime() <= now.getTime())
-    .sort((a, b) => {
-      if (a.isLeech !== b.isLeech) return a.isLeech ? -1 : 1;
-      return a.strength - b.strength;
-    });
   const lastActive = profile.lastActiveAt
     ? new Date(profile.lastActiveAt).getTime()
     : now.getTime();
-  const missedDays = Math.max(0, Math.floor((now.getTime() - lastActive) / DAY_MS) - 1);
-  const isRecoveryPlan = missedDays >= 2 || due.length >= 6;
-  const steps: SessionStep[] = [];
+  const missedDays = Math.max(
+    0,
+    Math.floor((now.getTime() - lastActive) / DAY_MS) - 1,
+  );
+
+  const gate = evaluateRevisionGate({ profile, memoryStates, mistakes, missedDays });
+  const isRecoveryPlan =
+    missedDays >= 2 ||
+    gate.reason === 'weak-backlog' ||
+    gate.reason === 'low-retention';
+
   const leechKeys = new Set(
     memoryStates.filter((state) => state.isLeech).map((state) => state.ayahKey),
   );
+  const claimed = new Set<AyahKey>();
+  const steps: SessionStep[] = [];
 
-  const warmup = due.slice(0, 1).map((state) => state.ayahKey);
-  if (warmup.length > 0) {
-    steps.push(makeStep('warmup', 'শান্তভাবে শুরু', warmup, Math.min(3, budget), 2, leechKeys));
+  // Weakness repair claims its ayahs first (targeted repair takes priority
+  // over generic rotation), but is *presented* third -- see step order below.
+  const weaknessCap = Math.max(1, Math.min(4, Math.floor(budget / 8)));
+  const weaknessKeys = deriveWeakQueue({ memoryStates, mistakes }).slice(0, weaknessCap);
+  weaknessKeys.forEach((key) => claimed.add(key));
+
+  // 1. Manzil / Amukhta -- continuous old revision, never due-gated.
+  const oldCount = memoryStates.filter((s) =>
+    OLD_REVISION_STAGES.includes(s.stage),
+  ).length;
+  const manzilAuto =
+    profile.hifzStatus === 'hafiz'
+      ? Math.max(10, Math.min(25, Math.round(oldCount * 0.03) || 10))
+      : Math.max(3, Math.min(15, Math.round(oldCount * 0.08) || 3));
+  const manzilTarget =
+    profile.manzilAyahsPerDay > 0 ? profile.manzilAyahsPerDay : manzilAuto;
+  const manzilShare = isRecoveryPlan ? 0.55 : 0.4;
+  const manzilCap = Math.max(1, Math.floor((budget * manzilShare) / 2));
+  const manzilKeys = buildManzilRotation({
+    memoryStates,
+    limit: Math.min(manzilTarget, manzilCap) + claimed.size,
+  })
+    .filter((key) => !claimed.has(key))
+    .slice(0, Math.min(manzilTarget, manzilCap));
+  manzilKeys.forEach((key) => claimed.add(key));
+  if (manzilKeys.length > 0) {
+    steps.push(
+      makeStep(
+        'manzil',
+        'মনজিল · পুরোনো হিফজ ঝালাই',
+        manzilKeys,
+        Math.max(2, manzilKeys.length * 2),
+        1,
+        leechKeys,
+      ),
+    );
   }
 
-  const reviewBudget = isRecoveryPlan ? Math.ceil(budget * 0.75) : Math.ceil(budget * 0.45);
-  const reviewKeys = due
-    .slice(warmup.length, warmup.length + Math.max(1, Math.floor(reviewBudget / 3)))
-    .map((state) => state.ayahKey);
-
-  if (reviewKeys.length > 0) {
-    const recentKeys = reviewKeys.slice(0, Math.ceil(reviewKeys.length / 2));
-    const olderKeys = reviewKeys.slice(recentKeys.length);
+  // 2. Sabqi / Sat Sabaq -- every recent approved lesson, daily.
+  const sabqiCap =
+    Math.max(1, Math.floor((budget * (isRecoveryPlan ? 0.35 : 0.3)) / 2)) + 3;
+  const sabqiKeys = buildSabqiSet({
+    memoryStates,
+    limit: sabqiCap + claimed.size,
+  })
+    .filter((key) => !claimed.has(key))
+    .slice(0, sabqiCap);
+  sabqiKeys.forEach((key) => claimed.add(key));
+  if (sabqiKeys.length > 0) {
     steps.push(
-      makeStep('sabqi', 'সাম্প্রতিক অংশ ঝালাই', recentKeys, recentKeys.length * 3, 2, leechKeys),
+      makeStep(
+        'sabqi',
+        'সবক়ি · সাম্প্রতিক সবক',
+        sabqiKeys,
+        Math.max(2, sabqiKeys.length * 3),
+        2,
+        leechKeys,
+      ),
     );
-    if (olderKeys.length > 0) {
+  }
+
+  // 3. Weakness repair -- presented after the rotation, worked with more reps.
+  if (weaknessKeys.length > 0) {
+    steps.push(
+      makeStep(
+        'weakness',
+        'দুর্বল আয়াত মেরামত',
+        weaknessKeys,
+        weaknessKeys.length * 3,
+        4,
+        leechKeys,
+      ),
+    );
+  }
+
+  // 4. New Sabaq -- only through the revision gate.
+  const usedMinutes = steps.reduce((sum, step) => sum + step.estimatedMinutes, 0);
+  const newMinutes = Math.max(0, budget - usedMinutes);
+  if (!gate.blocked && newMinutes >= 5) {
+    const capacity =
+      profile.calibrationSessions < 7
+        ? Math.min(profile.capacityLinesPerMinute, 0.6)
+        : profile.capacityLinesPerMinute;
+    const size = adaptiveSabaqSize({
+      profile,
+      gate,
+      availableMinutes: newMinutes,
+      capacityLinesPerMinute: capacity,
+    });
+    const newKeys = pickNewSabaqKeys(profile, memoryStates, contentPack, size);
+    if (newKeys.length > 0) {
+      const firstSurahNumber = Number(newKeys[0]!.split(':')[0]);
+      const firstSurahName = contentPack.surahs.find(
+        (surah) => surah.number === firstSurahNumber,
+      )?.nameBn;
       steps.push(
-        makeStep('manzil', 'পুরোনো অংশ শক্ত করুন', olderKeys, olderKeys.length * 3, 1, leechKeys),
+        makeStep(
+          'new',
+          firstSurahName ? `${firstSurahName} — নতুন সবক` : 'আজকের নতুন সবক',
+          newKeys,
+          newMinutes,
+          5,
+          leechKeys,
+        ),
       );
     }
   }
 
-  const usedMinutes = steps.reduce((sum, step) => sum + step.estimatedMinutes, 0);
-  const newMinutes = Math.max(0, budget - usedMinutes);
-  const canAddNew = !isRecoveryPlan || due.length < 4;
-
-  if (canAddNew && newMinutes >= 5) {
-    const memorized = new Set(profile.memorizedAyahKeys);
-    const capacity = profile.calibrationSessions < 7
-      ? Math.min(profile.capacityLinesPerMinute, 0.6)
-      : profile.capacityLinesPerMinute;
-    const sessionCap = Math.max(1, profile.maxNewAyahsPerSession || 3);
-    const maxNewAyahs = Math.min(
-      sessionCap,
-      Math.max(1, Math.min(3, Math.floor((newMinutes * capacity) / 2))),
-    );
-    const surahRank = new Map(
-      normalizeSurahOrder(profile.surahOrder, contentPack).map((number, index) => [number, index]),
-    );
-    const newKeys = contentPack.ayahs
-      .filter((ayah) => !memorized.has(ayah.key))
-      .sort((a, b) => {
-        const rankA = surahRank.get(a.surahNumber) ?? Number.MAX_SAFE_INTEGER;
-        const rankB = surahRank.get(b.surahNumber) ?? Number.MAX_SAFE_INTEGER;
-        if (rankA !== rankB) return rankA - rankB;
-        return a.ayahNumber - b.ayahNumber;
-      })
-      .slice(0, maxNewAyahs)
-      .map((ayah) => ayah.key);
-
-    if (newKeys.length > 0) {
-      steps.push(makeStep('new', 'আজকের নতুন হিফজ', newKeys, newMinutes, 5, leechKeys));
-    }
-  }
-
   if (steps.length === 0) {
-    const fallback = contentPack.ayahs.slice(0, 1).map((ayah) => ayah.key);
-    steps.push(makeStep('new', 'আজকের ছোট শুরু', fallback, budget, 5, leechKeys));
+    const fallback = pickNewSabaqKeys(profile, memoryStates, contentPack, 1);
+    const fallbackKeys =
+      fallback.length > 0
+        ? fallback
+        : contentPack.ayahs.slice(0, 1).map((ayah) => ayah.key);
+    steps.push(makeStep('new', 'আজকের ছোট শুরু', fallbackKeys, budget, 5, leechKeys));
   }
 
   return {
@@ -176,8 +328,10 @@ export function buildDailyPlan({
     date: now.toISOString().slice(0, 10),
     estimatedMinutes: steps.reduce((sum, step) => sum + step.estimatedMinutes, 0),
     isRecoveryPlan,
-    calibrationDay: profile.calibrationSessions < 7 ? profile.calibrationSessions + 1 : null,
+    calibrationDay:
+      profile.calibrationSessions < 7 ? profile.calibrationSessions + 1 : null,
     steps,
+    revisionGate: gate,
   };
 }
 

@@ -26,8 +26,15 @@ function ThemedStack() {
         }}
       >
         <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="plan" />
+        <Stack.Screen name="revision-gate" />
         <Stack.Screen name="session" />
+        <Stack.Screen name="weak-repair" />
+        <Stack.Screen name="recitation-test" />
+        <Stack.Screen name="memorized-surahs" />
         <Stack.Screen name="settings" />
+        <Stack.Screen name="teacher" />
+        <Stack.Screen name="teacher-review" />
       </Stack>
     </>
   );

@@ -1,6 +1,12 @@
 import { openDatabaseAsync, type SQLiteDatabase } from 'expo-sqlite';
 
-import type { MemoryState, SessionEvent, StudentProfile } from '@/domain/types';
+import type {
+  MemoryState,
+  MistakeRecord,
+  RecitationTestSummary,
+  SessionEvent,
+  StudentProfile,
+} from '@/domain/types';
 import type { StorageRepository } from './repository';
 
 class NativeStorageRepository implements StorageRepository {
@@ -65,6 +71,22 @@ class NativeStorageRepository implements StorageRepository {
 
   saveMemoryStates(states: MemoryState[]) {
     return this.setValue('memory-states', states);
+  }
+
+  async getMistakes() {
+    return (await this.getValue<MistakeRecord[]>('mistakes')) ?? [];
+  }
+
+  saveMistakes(mistakes: MistakeRecord[]) {
+    return this.setValue('mistakes', mistakes);
+  }
+
+  async getRecitationTests() {
+    return (await this.getValue<RecitationTestSummary[]>('recitation-tests')) ?? [];
+  }
+
+  saveRecitationTests(tests: RecitationTestSummary[]) {
+    return this.setValue('recitation-tests', tests);
   }
 
   async getSessionEvents() {

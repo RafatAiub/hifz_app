@@ -29,6 +29,7 @@
     "expo-router": "~57.0.16",
     "expo-secure-store": "~57.0.1",
     "expo-sharing": "~57.0.15",
+    "expo-speech-recognition": "~57.1.0",
     "expo-splash-screen": "~57.0.8",
     "expo-sqlite": "~57.0.1",
     "expo-status-bar": "~57.0.1",
@@ -48,6 +49,7 @@
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
+    "puppeteer-core": "^23.11.1",
     "typescript": "~6.0.3",
     "vitest": "^3.2.4"
   }

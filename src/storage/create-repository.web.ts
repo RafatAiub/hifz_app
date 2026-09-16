@@ -1,6 +1,12 @@
 import { openDB, type IDBPDatabase } from 'idb';
 
-import type { MemoryState, SessionEvent, StudentProfile } from '@/domain/types';
+import type {
+  MemoryState,
+  MistakeRecord,
+  RecitationTestSummary,
+  SessionEvent,
+  StudentProfile,
+} from '@/domain/types';
 import type { StorageRepository } from './repository';
 
 interface HifzDatabase {
@@ -49,6 +55,26 @@ class WebStorageRepository implements StorageRepository {
 
   async saveMemoryStates(states: MemoryState[]) {
     await (await this.db()).put('kv', states, 'memory-states');
+  }
+
+  async getMistakes() {
+    return ((await (await this.db()).get('kv', 'mistakes')) as MistakeRecord[] | undefined) ?? [];
+  }
+
+  async saveMistakes(mistakes: MistakeRecord[]) {
+    await (await this.db()).put('kv', mistakes, 'mistakes');
+  }
+
+  async getRecitationTests() {
+    return (
+      ((await (await this.db()).get('kv', 'recitation-tests')) as
+        | RecitationTestSummary[]
+        | undefined) ?? []
+    );
+  }
+
+  async saveRecitationTests(tests: RecitationTestSummary[]) {
+    await (await this.db()).put('kv', tests, 'recitation-tests');
   }
 
   async getSessionEvents() {

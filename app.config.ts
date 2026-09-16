@@ -3,7 +3,10 @@ import type { ExpoConfig, ConfigContext } from 'expo/config';
 // EAS Build injects this during the cloud Prebuild step (not set locally).
 // Used to keep the sideloaded "preview" APK small without touching the
 // Play Store "production" app-bundle, which already gets per-device ABI
-// splitting from Google Play itself.
+// splitting from Google Play itself. Build with the "preview-universal"
+// eas.json profile instead of "preview" to skip this restriction and get
+// a single APK that installs on any device ABI (arm64/armv7/x86/x86_64) --
+// bigger download, but not gated on the tester's phone architecture.
 const isPreviewBuild = process.env.EAS_BUILD_PROFILE === 'preview';
 
 export default ({ config }: ConfigContext): ExpoConfig => ({
@@ -50,6 +53,13 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
           'আপনার তিলাওয়াত record করতে Hifz-কে microphone ব্যবহার করতে দিন।',
         enableBackgroundPlayback: true,
         enableBackgroundRecording: false,
+      },
+    ],
+    [
+      'expo-speech-recognition',
+      {
+        microphonePermission: 'আপনার তিলাওয়াত শুনে ভুল ধরতে Hifz-কে microphone ব্যবহার করতে দিন।',
+        speechRecognitionPermission: 'আপনার তিলাওয়াত শনাক্ত করতে Hifz-কে speech recognition ব্যবহার করতে দিন।',
       },
     ],
     ['expo-notifications', { color: '#176B4D' }],

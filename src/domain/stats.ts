@@ -1,5 +1,6 @@
 import type {
   AyahKey,
+  DailyActivity,
   HifzVelocity,
   Milestone,
   QuranContentPack,
@@ -13,6 +14,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const STREAK_MILESTONE_DAYS = [3, 7, 14, 30, 60, 100];
 const AYAH_MILESTONE_COUNTS = [10, 25, 50, 100, 250, 500];
 const VELOCITY_WINDOW_DAYS = 14;
+const WEEKLY_ACTIVITY_WINDOW_DAYS = 7;
 
 function toDateKey(iso: string): string {
   return iso.slice(0, 10);
@@ -96,6 +98,36 @@ export function computeVelocity(
     ayahsPerDay: newAyahsInWindow.size / windowDays,
     windowDays,
   };
+}
+
+/**
+ * Ayahs touched (new + review) per day for the trailing window -- feeds the
+ * Hifz Health "last 7 days" bar chart. Always returns exactly `windowDays`
+ * entries, oldest first, so a quiet day still renders as a zero-height bar
+ * instead of a gap.
+ */
+export function computeWeeklyActivity(
+  events: SessionEvent[],
+  now: Date = new Date(),
+  windowDays: number = WEEKLY_ACTIVITY_WINDOW_DAYS,
+): DailyActivity[] {
+  const counts = new Map<string, number>();
+  for (const event of events) {
+    const key = toDateKey(event.occurredAt);
+    const touched = new Set([
+      ...(event.payload.newAyahKeys ?? []),
+      ...(event.payload.completedAyahKeys ?? []),
+    ]);
+    counts.set(key, (counts.get(key) ?? 0) + touched.size);
+  }
+  const todayKey = toDateKey(now.toISOString());
+  const days: DailyActivity[] = [];
+  for (let offset = windowDays - 1; offset >= 0; offset -= 1) {
+    const date = new Date(new Date(`${todayKey}T00:00:00.000Z`).getTime() - offset * DAY_MS);
+    const key = toDateKey(date.toISOString());
+    days.push({ date: key, count: counts.get(key) ?? 0 });
+  }
+  return days;
 }
 
 /**

@@ -25,7 +25,7 @@ export function MaskedAyah({
 }: {
   ayah: QuranAyah;
   maskLevel: MaskLevel;
-  onReveal: () => void;
+  onReveal: (wordIndex: number) => void;
 }) {
   const { profile } = useApp();
   const scale = profile?.arabicTextScale ?? 1;
@@ -44,7 +44,7 @@ export function MaskedAyah({
         next.delete(index);
       } else {
         next.add(index);
-        onReveal();
+        onReveal(index);
       }
       return next;
     });

@@ -5,6 +5,7 @@ import {
   Bell,
   Check,
   ChevronDown,
+  ChevronsUp,
   ChevronUp,
   Cloud,
   Moon,
@@ -12,7 +13,7 @@ import {
   Sun,
   SunMoon,
 } from 'lucide-react-native';
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Pressable,
   Text,
@@ -23,7 +24,7 @@ import {
 import { useApp } from '@/app-state/provider';
 import { ActionButton, AppScreen, IconAction } from '@/components/ui';
 import { quranDemoPack } from '@/data/quran-pack';
-import { normalizeSurahOrder } from '@/domain/planner';
+import { moveInOrder, normalizeSurahOrder } from '@/domain/planner';
 import { scheduleDailyReminder } from '@/services/reminders';
 import { syncPendingEvents } from '@/sync/sync-service';
 import { useThemedStyles } from '@/theme/create-styles';
@@ -37,6 +38,61 @@ const ARABIC_SCALES = [
   [1.4, 'অতিরিক্ত বড়'],
 ] as const;
 
+const SURAH_BY_NUMBER = new Map(
+  quranDemoPack.surahs.map((surah) => [surah.number, surah]),
+);
+
+const MUSHAF_ORDER = [...quranDemoPack.surahs]
+  .map((surah) => surah.number)
+  .sort((a, b) => a - b);
+
+// One-tap orderings for the "সূরার ক্রম" section. `value` is a full,
+// already-complete permutation of every Juz Amma surah -- it still passes
+// through normalizeSurahOrder() before it is stored, so a future content
+// change can never make a preset drop or duplicate a surah.
+const SURAH_ORDER_PRESETS: Array<{
+  id: string;
+  label: string;
+  hint: string;
+  value: number[];
+}> = [
+  { id: 'mushaf', label: 'মুসহাফ ক্রম', hint: 'নাবা → নাস', value: MUSHAF_ORDER },
+  {
+    id: 'reverse',
+    label: 'শেষ থেকে',
+    hint: 'নাস → নাবা',
+    value: [...MUSHAF_ORDER].reverse(),
+  },
+  {
+    id: 'short',
+    label: 'ছোট সূরা আগে',
+    hint: 'কম আয়াত আগে',
+    value: [...quranDemoPack.surahs]
+      .sort((a, b) => a.ayahCount - b.ayahCount || a.number - b.number)
+      .map((surah) => surah.number),
+  },
+];
+
+function sameOrder(a: number[], b: number[]) {
+  return a.length === b.length && a.every((value, index) => value === b[index]);
+}
+
+const HIFZ_STATUS_OPTIONS = [
+  ['new', 'নতুন', 'শুরু করছি'],
+  ['partial', 'আংশিক', 'কিছু মুখস্থ আছে'],
+  ['hafiz', 'হাফেজ', 'শুধু মুরাজাআ'],
+] as const;
+
+const IMPORT_STRENGTH_OPTIONS = [
+  ['strong', 'পাকা'],
+  ['medium', 'মোটামুটি'],
+  ['weak', 'কাঁচা'],
+] as const;
+
+const SAT_SABAQ_OPTIONS = [5, 7, 10, 15];
+const RECENT_REVISION_OPTIONS = [7, 10, 14, 21, 30];
+const MANZIL_PER_DAY_OPTIONS = [0, 5, 10, 15, 20];
+
 export default function SettingsScreen() {
   const {
     profile,
@@ -47,8 +103,13 @@ export default function SettingsScreen() {
     setSurahOrder,
     setMaxNewAyahsPerSession,
     setSurahMemorized,
+    setHifzStatus,
+    setTeacherModeEnabled,
+    setTeacherSetting,
     repository,
   } = useApp();
+  const [importStrength, setImportStrength] =
+    useState<(typeof IMPORT_STRENGTH_OPTIONS)[number][0]>('medium');
   const colors = useThemeColors();
   const styles = useThemedStyles(createStyles);
   const { preference, setPreference } = useThemeMode();
@@ -73,21 +134,73 @@ export default function SettingsScreen() {
     [memorizedSet],
   );
 
-  const orderedSurahs = useMemo(() => {
-    const order = normalizeSurahOrder(profile?.surahOrder ?? [], quranDemoPack);
-    const byNumber = new Map(quranDemoPack.surahs.map((surah) => [surah.number, surah]));
-    return order.map((number) => byNumber.get(number)!).filter(Boolean);
-  }, [profile?.surahOrder]);
+  // The surah order is edited against a local working copy so a burst of
+  // taps stays responsive and never races the async save. Every mutation
+  // goes through `commitSurahOrder`, which updates the ref synchronously
+  // (so chained taps compose), drives the UI, and debounces one write to
+  // the provider -- flushed immediately if the user leaves the screen.
+  const [surahOrder, setSurahOrderDraft] = useState<number[]>(() =>
+    normalizeSurahOrder(profile?.surahOrder ?? [], quranDemoPack),
+  );
+  const surahOrderRef = useRef(surahOrder);
+  const surahOrderSeeded = useRef(false);
+  const persistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingSurahOrder = useRef<number[] | null>(null);
 
-  function moveSurah(index: number, direction: -1 | 1) {
-    const target = index + direction;
-    if (target < 0 || target >= orderedSurahs.length) return;
-    const next = orderedSurahs.map((surah) => surah.number);
-    const temp = next[index]!;
-    next[index] = next[target]!;
-    next[target] = temp;
-    void setSurahOrder(next);
-  }
+  // This screen can mount before the provider has finished reading the
+  // stored profile, so seed the draft the first time a real profile lands
+  // rather than trusting the initial (possibly empty) render.
+  useEffect(() => {
+    if (surahOrderSeeded.current || !profile) return;
+    const seeded = normalizeSurahOrder(profile.surahOrder ?? [], quranDemoPack);
+    surahOrderRef.current = seeded;
+    setSurahOrderDraft(seeded);
+    surahOrderSeeded.current = true;
+  }, [profile]);
+
+  const flushSurahOrder = useCallback(() => {
+    if (persistTimer.current) {
+      clearTimeout(persistTimer.current);
+      persistTimer.current = null;
+    }
+    if (pendingSurahOrder.current) {
+      void setSurahOrder(pendingSurahOrder.current);
+      pendingSurahOrder.current = null;
+    }
+  }, [setSurahOrder]);
+
+  useEffect(() => flushSurahOrder, [flushSurahOrder]);
+
+  const commitSurahOrder = useCallback(
+    (next: number[]) => {
+      surahOrderRef.current = next;
+      setSurahOrderDraft(next);
+      pendingSurahOrder.current = next;
+      if (persistTimer.current) clearTimeout(persistTimer.current);
+      persistTimer.current = setTimeout(() => {
+        persistTimer.current = null;
+        const queued = pendingSurahOrder.current;
+        pendingSurahOrder.current = null;
+        if (queued) void setSurahOrder(queued);
+      }, 400);
+    },
+    [setSurahOrder],
+  );
+
+  const reorderSurah = useCallback(
+    (fromIndex: number, toIndex: number) => {
+      if (fromIndex === toIndex) return;
+      commitSurahOrder(moveInOrder(surahOrderRef.current, fromIndex, toIndex));
+    },
+    [commitSurahOrder],
+  );
+
+  const applySurahOrderPreset = useCallback(
+    (value: number[]) => {
+      commitSurahOrder(normalizeSurahOrder(value, quranDemoPack));
+    },
+    [commitSurahOrder],
+  );
 
   async function enableReminder() {
     const enabled = await scheduleDailyReminder(reminderTime);
@@ -338,38 +451,237 @@ export default function SettingsScreen() {
 
       <View style={styles.divider} />
 
+      <Text style={styles.sectionTitle}>হিফজ অবস্থা</Text>
+      <Text style={styles.body}>
+        হাফেজ বেছে নিলে app আর নতুন সবক দেবে না — শুধু পুরো কুরআনের মুরাজাআ ঘোরাবে।
+      </Text>
+      <View style={styles.choices}>
+        {HIFZ_STATUS_OPTIONS.map(([value, label, hint]) => (
+          <Pressable
+            key={value}
+            accessibilityRole="radio"
+            accessibilityState={{ checked: (profile?.hifzStatus ?? 'new') === value }}
+            onPress={() => void setHifzStatus(value)}
+            style={[
+              styles.presetChoice,
+              (profile?.hifzStatus ?? 'new') === value && styles.choiceSelected,
+            ]}
+          >
+            <Text
+              style={[
+                styles.presetLabel,
+                (profile?.hifzStatus ?? 'new') === value && styles.choiceTextSelected,
+              ]}
+            >
+              {label}
+            </Text>
+            <Text
+              style={[
+                styles.presetHint,
+                (profile?.hifzStatus ?? 'new') === value && styles.choiceTextSelected,
+              ]}
+            >
+              {hint}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+
+      <View style={styles.divider} />
+
+      <Text style={styles.sectionTitle}>উস্তাদ মোড</Text>
+      <Text style={styles.body}>
+        উস্তাদ approve না করা পর্যন্ত নতুন সবক “সবক়ি” হবে না। Home ও session-এ
+        দ্রুত approve/verify বোতাম আসবে।
+      </Text>
+      <View style={styles.choices}>
+        {([
+          [true, 'চালু'],
+          [false, 'বন্ধ'],
+        ] as const).map(([value, label]) => (
+          <Pressable
+            key={String(value)}
+            accessibilityRole="radio"
+            accessibilityState={{ checked: (profile?.teacherModeEnabled ?? false) === value }}
+            onPress={() => void setTeacherModeEnabled(value)}
+            style={[
+              styles.choice,
+              (profile?.teacherModeEnabled ?? false) === value && styles.choiceSelected,
+            ]}
+          >
+            <Text
+              style={[
+                styles.choiceText,
+                (profile?.teacherModeEnabled ?? false) === value && styles.choiceTextSelected,
+              ]}
+            >
+              {label}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+
+      {profile?.teacherModeEnabled ? (
+        <>
+          <Text style={styles.subLabel}>সাত সবক — সাম্প্রতিক কয়টি সবক দৈনিক ঝালাই</Text>
+          <View style={styles.choices}>
+            {SAT_SABAQ_OPTIONS.map((value) => (
+              <Pressable
+                key={value}
+                accessibilityRole="radio"
+                accessibilityState={{ checked: (profile?.satSabaqCount ?? 7) === value }}
+                onPress={() => void setTeacherSetting({ satSabaqCount: value })}
+                style={[
+                  styles.choice,
+                  (profile?.satSabaqCount ?? 7) === value && styles.choiceSelected,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.choiceText,
+                    (profile?.satSabaqCount ?? 7) === value && styles.choiceTextSelected,
+                  ]}
+                >
+                  {value}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+
+          <Text style={styles.subLabel}>সবক়ি → মনজিল যেতে কত দিন</Text>
+          <View style={styles.choices}>
+            {RECENT_REVISION_OPTIONS.map((value) => (
+              <Pressable
+                key={value}
+                accessibilityRole="radio"
+                accessibilityState={{ checked: (profile?.recentRevisionDays ?? 14) === value }}
+                onPress={() => void setTeacherSetting({ recentRevisionDays: value })}
+                style={[
+                  styles.choice,
+                  (profile?.recentRevisionDays ?? 14) === value && styles.choiceSelected,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.choiceText,
+                    (profile?.recentRevisionDays ?? 14) === value && styles.choiceTextSelected,
+                  ]}
+                >
+                  {value}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+
+          <Text style={styles.subLabel}>মনজিল / দিন (০ = নিজে ঠিক করুক)</Text>
+          <View style={styles.choices}>
+            {MANZIL_PER_DAY_OPTIONS.map((value) => (
+              <Pressable
+                key={value}
+                accessibilityRole="radio"
+                accessibilityState={{ checked: (profile?.manzilAyahsPerDay ?? 0) === value }}
+                onPress={() => void setTeacherSetting({ manzilAyahsPerDay: value })}
+                style={[
+                  styles.choice,
+                  (profile?.manzilAyahsPerDay ?? 0) === value && styles.choiceSelected,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.choiceText,
+                    (profile?.manzilAyahsPerDay ?? 0) === value && styles.choiceTextSelected,
+                  ]}
+                >
+                  {value === 0 ? 'auto' : value}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </>
+      ) : null}
+
+      <View style={styles.divider} />
+
       <Text style={styles.sectionTitle}>সূরার ক্রম</Text>
       <Text style={styles.body}>
-        কোন সূরা আগে হিফজ করবেন, তা এখানে ঠিক করুন। App এই ক্রম অনুযায়ী নতুন আয়াত দেবে।
+        কোন সূরা আগে হিফজ করবেন, তা এখানে ঠিক করুন। App এই ক্রম অনুযায়ী নতুন আয়াত
+        দেবে। নিচের যেকোনো একটি সাজানো বেছে নিন, অথবা কোনো সূরার পাশের প্রথম বোতামে
+        চাপলে সেটি এক ধাপেই তালিকার শুরুতে চলে আসবে।
       </Text>
+
+      <Text style={styles.subLabel}>দ্রুত সাজান</Text>
+      <View style={styles.choices}>
+        {SURAH_ORDER_PRESETS.map((preset) => {
+          const active = sameOrder(surahOrder, preset.value);
+          return (
+            <Pressable
+              key={preset.id}
+              accessibilityRole="radio"
+              accessibilityState={{ checked: active }}
+              onPress={() => applySurahOrderPreset(preset.value)}
+              style={[styles.presetChoice, active && styles.choiceSelected]}
+            >
+              <Text
+                style={[styles.presetLabel, active && styles.choiceTextSelected]}
+                numberOfLines={1}
+              >
+                {preset.label}
+              </Text>
+              <Text
+                style={[styles.presetHint, active && styles.choiceTextSelected]}
+                numberOfLines={1}
+              >
+                {preset.hint}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
       <View style={styles.surahList}>
-        {orderedSurahs.map((surah, index) => (
-          <View key={surah.number} style={styles.orderRow}>
-            <Text style={styles.orderIndex}>{index + 1}</Text>
-            <Text style={styles.surahRowText} numberOfLines={1}>
-              {surah.number}. {surah.nameBn} · {surah.nameArabic}
-            </Text>
-            <View style={styles.orderButtons}>
-              <IconAction
-                label={`সূরা ${surah.nameBn} উপরে নিন`}
-                disabled={index === 0}
-                icon={<ChevronUp color={index === 0 ? colors.line : colors.primary} size={18} />}
-                onPress={() => moveSurah(index, -1)}
-              />
-              <IconAction
-                label={`সূরা ${surah.nameBn} নিচে নিন`}
-                disabled={index === orderedSurahs.length - 1}
-                icon={
-                  <ChevronDown
-                    color={index === orderedSurahs.length - 1 ? colors.line : colors.primary}
-                    size={18}
-                  />
-                }
-                onPress={() => moveSurah(index, 1)}
-              />
+        {surahOrder.map((surahNumber, index) => {
+          const surah = SURAH_BY_NUMBER.get(surahNumber);
+          if (!surah) return null;
+          const isFirst = index === 0;
+          const isLast = index === surahOrder.length - 1;
+          return (
+            <View key={surahNumber} style={styles.orderRow}>
+              <Text style={styles.orderIndex}>{index + 1}</Text>
+              <Text style={styles.surahRowText} numberOfLines={1}>
+                {surah.number}. {surah.nameBn} · {surah.nameArabic}
+              </Text>
+              <View style={styles.orderButtons}>
+                <IconAction
+                  label={`সূরা ${surah.nameBn} তালিকার শুরুতে নিন`}
+                  disabled={isFirst}
+                  style={styles.orderButton}
+                  icon={
+                    <ChevronsUp color={isFirst ? colors.line : colors.primary} size={18} />
+                  }
+                  onPress={() => reorderSurah(index, 0)}
+                />
+                <IconAction
+                  label={`সূরা ${surah.nameBn} এক ধাপ উপরে নিন`}
+                  disabled={isFirst}
+                  style={styles.orderButton}
+                  icon={
+                    <ChevronUp color={isFirst ? colors.line : colors.primary} size={18} />
+                  }
+                  onPress={() => reorderSurah(index, index - 1)}
+                />
+                <IconAction
+                  label={`সূরা ${surah.nameBn} এক ধাপ নিচে নিন`}
+                  disabled={isLast}
+                  style={styles.orderButton}
+                  icon={
+                    <ChevronDown color={isLast ? colors.line : colors.primary} size={18} />
+                  }
+                  onPress={() => reorderSurah(index, index + 1)}
+                />
+              </View>
             </View>
-          </View>
-        ))}
+          );
+        })}
       </View>
 
       <View style={styles.divider} />
@@ -397,8 +709,30 @@ export default function SettingsScreen() {
       <Text style={styles.sectionTitle}>মুখস্থ থাকা সূরা</Text>
       <Text style={styles.body}>
         যে সূরা আগে থেকেই মুখস্থ, সেটা চিহ্নিত করুন — app আর সেটাকে নতুন হিসেবে
-        পড়াবে না। {memorizedSurahCount}/{quranDemoPack.surahs.length} সূরা মুখস্থ।
+        পড়াবে না, বরং নিচের অবস্থা অনুযায়ী ঝালাইয়ের ঘূর্ণনে আনবে।{' '}
+        {memorizedSurahCount}/{quranDemoPack.surahs.length} সূরা মুখস্থ।
       </Text>
+      <Text style={styles.subLabel}>নতুন করে চিহ্নিত সূরার অবস্থা</Text>
+      <View style={styles.choices}>
+        {IMPORT_STRENGTH_OPTIONS.map(([value, label]) => (
+          <Pressable
+            key={value}
+            accessibilityRole="radio"
+            accessibilityState={{ checked: importStrength === value }}
+            onPress={() => setImportStrength(value)}
+            style={[styles.choice, importStrength === value && styles.choiceSelected]}
+          >
+            <Text
+              style={[
+                styles.choiceText,
+                importStrength === value && styles.choiceTextSelected,
+              ]}
+            >
+              {label}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
       <View style={styles.surahList}>
         {quranDemoPack.surahs.map((surah) => {
           const memorized = isSurahMemorized(surah.number);
@@ -407,7 +741,9 @@ export default function SettingsScreen() {
               key={surah.number}
               accessibilityRole="checkbox"
               accessibilityState={{ checked: memorized }}
-              onPress={() => void setSurahMemorized(surah.number, !memorized)}
+              onPress={() =>
+                void setSurahMemorized(surah.number, !memorized, importStrength)
+              }
               style={styles.surahRow}
             >
               <View style={[styles.checkbox, memorized && styles.checkboxChecked]}>
@@ -506,6 +842,38 @@ function createStyles(colors: ColorPalette) {
     choiceSelected: {
       backgroundColor: colors.mint,
       borderColor: colors.primary,
+    },
+    subLabel: {
+      color: colors.muted,
+      fontFamily: typography.bengaliMedium,
+      fontSize: 12,
+      marginTop: spacing.md,
+      marginBottom: spacing.sm,
+    },
+    presetChoice: {
+      flex: 1,
+      minHeight: 52,
+      borderRadius: radius.md,
+      backgroundColor: colors.surface,
+      borderColor: colors.line,
+      borderWidth: 1,
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+      paddingHorizontal: spacing.xs,
+      paddingVertical: spacing.sm,
+      gap: 2,
+    },
+    presetLabel: {
+      color: colors.ink,
+      fontFamily: typography.bengaliMedium,
+      fontSize: 11,
+      textAlign: 'center' as const,
+    },
+    presetHint: {
+      color: colors.muted,
+      fontFamily: typography.bengali,
+      fontSize: 9,
+      textAlign: 'center' as const,
     },
     arabicChoice: {
       height: 72,
@@ -611,6 +979,10 @@ function createStyles(colors: ColorPalette) {
     orderButtons: {
       flexDirection: 'row' as const,
       gap: spacing.xs,
+    },
+    orderButton: {
+      width: 36,
+      height: 36,
     },
     checkbox: {
       width: 22,

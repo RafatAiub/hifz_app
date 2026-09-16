@@ -17,23 +17,16 @@ export function TajweedArabicText({
   ayahKey,
   text,
   style,
-  trailing,
-  trailingStyle,
 }: {
   ayahKey: string;
   text: string;
   style: StyleProp<TextStyle>;
-  /** Rendered as one more inline run at the end of the verse, e.g. the
-   * traditional ۝ end-of-ayah ornament with its verse number. */
-  trailing?: string;
-  trailingStyle?: StyleProp<TextStyle>;
 }) {
   const segments = segmentsByAyah[ayahKey];
   if (!segments) {
     return (
       <Text selectable style={style}>
         {text}
-        {trailing ? <Text style={trailingStyle}>{trailing}</Text> : null}
       </Text>
     );
   }
@@ -49,7 +42,6 @@ export function TajweedArabicText({
           )}
         </Fragment>
       ))}
-      {trailing ? <Text style={trailingStyle}>{trailing}</Text> : null}
     </Text>
   );
 }

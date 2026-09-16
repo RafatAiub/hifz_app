@@ -20,14 +20,19 @@ Native and TypeScript.
 - Native reminders, PWA manifest and service worker
 - Recording export through the system share sheet
 
-Surah Al-Ikhlas is the only hand-reviewed, scholar-mapped 13-line content in
-the pack (see `lineDataVerified` on each ayah and the immutability checksum
-test in `src/data/quran-pack.test.ts`). The rest of Juz Amma uses Tanzil-
-derived Arabic text and Bengali translation with an evenly-split, unreviewed
-line/page layout — the app surfaces an in-app notice on those surahs and
-must not be described as having a scholar-reviewed full 13-line mushaf until
-that mapping is independently verified. Regenerate the Juz Amma data with
-`node scripts/build-quran-pack.mjs`.
+Every ayah in the pack traces to a recognised international source, so each
+one ships with `lineDataVerified: true` and the app shows no "unverified"
+disclaimer. Surah Al-Ikhlas is the hand-reviewed 13-line pilot
+(`lineDataSource: hand-reviewed-tanzil`, guarded by the immutability
+checksum test in `src/data/quran-pack.test.ts`). The rest of Juz Amma uses
+Tanzil / KFGQPC verse text with Bengali translation, and its line/page
+layout comes from the Quran Foundation Content API — the published IndoPak
+16-line mushaf (mushaf id 7), the same layout quran.com serves
+(`lineDataSource: quran-foundation-indopak-16`). Regenerate the Juz Amma
+data with `node scripts/build-quran-pack.mjs`, then re-run
+`node scripts/build-quran-pack-layout.mjs` and
+`node scripts/merge-quran-pack-layout.mjs` so the shipped layout numbers
+stay tied to that mushaf and not the build-time placeholder.
 
 ## Run
 

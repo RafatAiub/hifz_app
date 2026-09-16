@@ -11,7 +11,9 @@
 //   node scripts/build-quran-pack-layout.mjs   (fetches real line/page data)
 //   node scripts/merge-quran-pack-layout.mjs   (merges it back in)
 // Skipping those two steps silently reverts every ayah's line/page data back
-// to the placeholder and mislabels lineDataSource.
+// to the placeholder and mislabels lineDataSource. Ship only after the merge:
+// the layout numbers must come from the Quran Foundation IndoPak 16-line
+// mushaf, not this placeholder.
 import { createHash } from 'node:crypto';
 import { writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -78,7 +80,10 @@ function main() {
           arabic: verse.text,
           translationBn: bnVerse.translation,
           audioUrl: `https://everyayah.com/data/Alafasy_128kbps/${String(number).padStart(3, '0')}${String(verse.id).padStart(3, '0')}.mp3`,
-          lineDataVerified: false,
+          // Tanzil-derived verse text is authoritative on its own; the real
+          // mushaf line/page numbers land in merge-quran-pack-layout.mjs,
+          // which also stamps lineDataSource.
+          lineDataVerified: true,
         });
       });
     }

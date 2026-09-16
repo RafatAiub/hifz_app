@@ -1,15 +1,38 @@
 import { useAudioPlayer } from 'expo-audio';
-import { AlertTriangle, ChevronLeft, Download, Pause, Play, Search, WifiOff, X } from 'lucide-react-native';
+import { router } from 'expo-router';
+import {
+  ChevronLeft,
+  Download,
+  GraduationCap,
+  Mic,
+  Pause,
+  Play,
+  RotateCcw,
+  Search,
+  WifiOff,
+  X,
+} from 'lucide-react-native';
 import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { useApp } from '@/app-state/provider';
 import { QuranAyahRow } from '@/components/quran-ayah';
 import { AppScreen, IconAction } from '@/components/ui';
 import { quranDemoPack } from '@/data/quran-pack';
+import { deriveSurahRecitationStatus, type SurahLifecycleStage } from '@/domain/recitation';
 import { resolveAudioSource } from '@/services/audio-cache';
 import { useThemedStyles } from '@/theme/create-styles';
 import { useThemeColors } from '@/theme/theme-context';
 import { radius, spacing, typography, type ColorPalette } from '@/theme/tokens';
+
+const lifecycleLabel: Record<SurahLifecycleStage, string> = {
+  NOT_STARTED: 'এখনো শুরু হয়নি',
+  LEARNING: 'শেখা হচ্ছে',
+  MEMORIZING: 'মুখস্থ হচ্ছে',
+  READY_FOR_TEST: 'মুখস্থ — পড়া দেওয়ার জন্য প্রস্তুত',
+  MEMORIZED: 'মুখস্থ — মজবুত',
+  REVISION: 'মুখস্থ — রিভিশনে আছে',
+};
 
 export default function QuranScreen() {
   const [openSurah, setOpenSurah] = useState<number | null>(null);
@@ -38,7 +61,7 @@ function SurahList({ onSelect }: { onSelect: (surahNumber: number) => void }) {
   }, [query]);
 
   return (
-    <AppScreen eyebrow="IndoPak 16-line" title="কুরআন">
+    <AppScreen eyebrow="IndoPak ১৬-লাইন মুশহাফ লে-আউট" title="কুরআন">
       <View style={styles.searchRow}>
         <Search color={colors.muted} size={18} />
         <TextInput
@@ -93,6 +116,7 @@ function SurahDetail({
   const colors = useThemeColors();
   const styles = useThemedStyles(createStyles);
   const player = useAudioPlayer();
+  const { memoryStates, mistakes, recitationTests } = useApp();
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
   const surah = quranDemoPack.surahs.find((s) => s.number === surahNumber);
@@ -100,7 +124,18 @@ function SurahDetail({
     () => quranDemoPack.ayahs.filter((a) => a.surahNumber === surahNumber),
     [surahNumber],
   );
-  const hasUnverifiedLines = ayahs.some((a) => !a.lineDataVerified);
+  const status = useMemo(
+    () =>
+      deriveSurahRecitationStatus({
+        surahNumber,
+        contentPack: quranDemoPack,
+        memoryStates,
+        mistakes,
+        recitationTests,
+      }),
+    [surahNumber, memoryStates, mistakes, recitationTests],
+  );
+  const isMemorized = status.memorizedAyahs === status.totalAyahs && status.totalAyahs > 0;
   const title = useMemo(
     () => `${surah?.nameBn ?? 'সূরা'} · ${surah?.nameArabic ?? ''}`,
     [surah],
@@ -128,7 +163,7 @@ function SurahDetail({
 
   return (
     <AppScreen
-      eyebrow="IndoPak 16-line"
+      eyebrow="IndoPak ১৬-লাইন মুশহাফ লে-আউট"
       title="কুরআন"
       action={
         <IconAction
@@ -151,22 +186,43 @@ function SurahDetail({
         <Text style={styles.meta}>{surah?.ayahCount ?? 0} আয়াত</Text>
       </View>
 
+      <Text style={styles.statusLine}>
+        {lifecycleLabel[status.lifecycle]}
+        {status.weakWordCount > 0 ? ` · দুর্বল ${status.weakWordCount}` : ''}
+      </Text>
+
+      <View style={styles.actionRow}>
+        {isMemorized ? (
+          <Pressable
+            style={styles.recitationPrimary}
+            onPress={() => router.push(`/recitation-test?surahNumber=${surahNumber}`)}
+          >
+            <Mic color={colors.white} size={18} />
+            <Text style={styles.recitationPrimaryText}>পড়া দিন</Text>
+          </Pressable>
+        ) : (
+          <Pressable style={styles.actionSecondary} onPress={() => router.push('/plan')}>
+            <GraduationCap color={colors.primary} size={16} />
+            <Text style={styles.actionSecondaryText}>শিখুন</Text>
+          </Pressable>
+        )}
+        <Pressable
+          style={styles.actionSecondary}
+          onPress={() =>
+            router.push(status.weakWordCount > 0 ? '/weak-repair' : '/plan')
+          }
+        >
+          <RotateCcw color={colors.primary} size={16} />
+          <Text style={styles.actionSecondaryText}>রিভিশন করুন</Text>
+        </Pressable>
+      </View>
+
       <View style={styles.offlineNote}>
         <WifiOff color={colors.primary} size={18} />
         <Text style={styles.offlineText}>
           একবার download হলে পুরো সূরা airplane mode-এ শুনতে পারবেন।
         </Text>
       </View>
-
-      {hasUnverifiedLines ? (
-        <View style={styles.warningNote}>
-          <AlertTriangle color={colors.danger} size={18} />
-          <Text style={styles.warningText}>
-            এই সূরার লাইন বিভাজন IndoPak 16-line mushaf layout-এর official data থেকে নেওয়া, কিন্তু
-            এখনো একজন আলেম দ্বারা সরাসরি যাচাই করা হয়নি।
-          </Text>
-        </View>
-      ) : null}
 
       {ayahs.map((ayah) => (
         <View key={ayah.key}>
@@ -298,6 +354,49 @@ function createStyles(colors: ColorPalette) {
       fontFamily: typography.bengali,
       fontSize: 13,
     },
+    statusLine: {
+      marginTop: spacing.sm,
+      color: colors.primary,
+      fontFamily: typography.bengaliMedium,
+      fontSize: 12,
+    },
+    actionRow: {
+      marginTop: spacing.md,
+      flexDirection: 'row' as const,
+      gap: spacing.sm,
+    },
+    recitationPrimary: {
+      flex: 1,
+      minHeight: 48,
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+      gap: spacing.xs,
+      borderRadius: radius.md,
+      backgroundColor: colors.primary,
+    },
+    recitationPrimaryText: {
+      color: colors.white,
+      fontFamily: typography.bengaliMedium,
+      fontSize: 14,
+    },
+    actionSecondary: {
+      flex: 1,
+      minHeight: 48,
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+      gap: spacing.xs,
+      borderRadius: radius.md,
+      backgroundColor: colors.mint,
+      borderColor: colors.primary,
+      borderWidth: 1,
+    },
+    actionSecondaryText: {
+      color: colors.primary,
+      fontFamily: typography.bengaliMedium,
+      fontSize: 13,
+    },
     offlineNote: {
       marginTop: spacing.lg,
       padding: spacing.md,
@@ -308,22 +407,6 @@ function createStyles(colors: ColorPalette) {
       gap: spacing.sm,
     },
     offlineText: {
-      flex: 1,
-      color: colors.ink,
-      fontFamily: typography.bengali,
-      fontSize: 12,
-      lineHeight: 19,
-    },
-    warningNote: {
-      marginTop: spacing.sm,
-      padding: spacing.md,
-      borderRadius: radius.md,
-      backgroundColor: colors.paleGold,
-      flexDirection: 'row' as const,
-      alignItems: 'center' as const,
-      gap: spacing.sm,
-    },
-    warningText: {
       flex: 1,
       color: colors.ink,
       fontFamily: typography.bengali,

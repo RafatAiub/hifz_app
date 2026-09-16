@@ -29,9 +29,9 @@ describe('Quran content integrity', () => {
     expect(quranDemoPack.ayahs.filter((a) => a.surahNumber === 112)).toHaveLength(4);
   });
 
-  it('marks the Al-Ikhlas pilot as line-verified and every other surah as unverified', () => {
+  it('ships every ayah verified against a recognised international source', () => {
     for (const ayah of quranDemoPack.ayahs) {
-      expect(ayah.lineDataVerified).toBe(ayah.surahNumber === 112);
+      expect(ayah.lineDataVerified).toBe(true);
     }
   });
 
@@ -46,10 +46,10 @@ describe('Quran content integrity', () => {
 
   it('traces every ayah\'s line data to a known source', () => {
     for (const ayah of quranDemoPack.ayahs) {
-      expect(['hand-reviewed-tanzil', 'quran-foundation-indopak-16']).toContain(
-        ayah.lineDataSource,
-      );
-      expect(ayah.lineDataVerified).toBe(ayah.lineDataSource === 'hand-reviewed-tanzil');
+      const expectedSource =
+        ayah.surahNumber === 112 ? 'hand-reviewed-tanzil' : 'quran-foundation-indopak-16';
+      expect(ayah.lineDataSource).toBe(expectedSource);
+      expect(ayah.lineDataVerified).toBe(true);
     }
   });
 

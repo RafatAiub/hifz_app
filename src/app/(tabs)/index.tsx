@@ -4,23 +4,37 @@ import {
   Check,
   ChevronRight,
   Clock3,
+  GraduationCap,
+  Mic,
   RotateCcw,
   Settings,
+  ShieldAlert,
 } from 'lucide-react-native';
 import { Pressable, Text, View } from 'react-native';
 
 import { useApp } from '@/app-state/provider';
 import { ActionButton, AppScreen, IconAction } from '@/components/ui';
+import type { RevisionGateReason, SessionStepKind } from '@/domain/types';
 import { useThemedStyles } from '@/theme/create-styles';
 import { useThemeColors } from '@/theme/theme-context';
 import { radius, spacing, typography, type ColorPalette } from '@/theme/tokens';
 import { useBreakpoint } from '@/theme/use-breakpoint';
 
-const stepLabels = {
+const stepLabels: Record<SessionStepKind, string> = {
   warmup: 'শুরু',
-  new: 'নতুন হিফজ',
-  sabqi: 'সাবকি',
-  manzil: 'মানযিল',
+  manzil: 'মনজিল · আমুখতা',
+  sabqi: 'সবক়ি · সাত সবক',
+  weakness: 'দুর্বল আয়াত',
+  new: 'নতুন সবক',
+};
+
+const gateCopy: Record<RevisionGateReason, string> = {
+  ok: '',
+  'missed-days': 'কয়েকদিন বিরতি হয়েছে — আজ শুধু ঝালাই, নতুন সবক পরে।',
+  'weak-backlog': 'দুর্বল আয়াত জমে গেছে — আজ পুনরুদ্ধারের দিন, নতুন সবক বন্ধ।',
+  'low-retention': 'সবক়ি/মনজিল এখনো কাঁচা — আগে সেটা পাকা করুন, নতুন সবক বন্ধ।',
+  'teacher-paused': 'উস্তাদ আপাতত নতুন সবক বন্ধ রেখেছেন।',
+  'completed-hafiz': 'মুরাজাআ মোড — পুরো কুরআন ঘোরানো হচ্ছে, নতুন সবক নেই।',
 };
 
 export default function TodayScreen() {
@@ -36,17 +50,29 @@ export default function TodayScreen() {
   const reviewAyahs = plan?.steps
     .filter((step) => step.kind !== 'new')
     .reduce((total, step) => total + step.ayahKeys.length, 0) ?? 0;
+  const gate = plan?.revisionGate;
+  const health = stats.hifzHealth;
+  const showTeacher = profile?.teacherModeEnabled ?? false;
 
   return (
     <AppScreen
       eyebrow="আপনার জন্য প্রস্তুত"
       title="আজকের হিফজ"
       action={
-        <IconAction
-          label="সেটিংস"
-          icon={<Settings color={colors.ink} size={21} />}
-          onPress={() => router.push('/settings')}
-        />
+        <View style={styles.headerActions}>
+          {showTeacher ? (
+            <IconAction
+              label="উস্তাদ মোড"
+              icon={<GraduationCap color={colors.ink} size={21} />}
+              onPress={() => router.push('/teacher')}
+            />
+          ) : null}
+          <IconAction
+            label="সেটিংস"
+            icon={<Settings color={colors.ink} size={21} />}
+            onPress={() => router.push('/settings')}
+          />
+        </View>
       }
     >
       <View style={styles.identityRow}>
@@ -85,6 +111,33 @@ export default function TodayScreen() {
         </View>
       </View>
 
+      {gate ? (
+        <Pressable
+          style={styles.gateBanner}
+          onPress={() => router.push('/revision-gate')}
+          accessibilityRole="button"
+        >
+          <ShieldAlert color={colors.gold} size={18} />
+          <Text style={styles.gateText}>
+            {gate.blocked && gateCopy[gate.reason]
+              ? gateCopy[gate.reason]
+              : 'নতুন সবক খোলা আছে।'}
+          </Text>
+          <Text style={styles.gateStrength}>
+            {Math.round(((gate.sabqiRetention + gate.manzilRetention) / 2) * 100)}%
+          </Text>
+        </Pressable>
+      ) : null}
+
+      {health.total > 0 ? (
+        <View style={styles.healthRow}>
+          <HealthCell value={health.total} label="মোট" tone={colors.ink} />
+          <HealthCell value={health.strong} label="শক্ত" tone={colors.primary} />
+          <HealthCell value={health.needsRevision} label="ঝালাই দরকার" tone={colors.gold} />
+          <HealthCell value={health.weak} label="দুর্বল" tone={colors.coral} />
+        </View>
+      ) : null}
+
       <View style={styles.durationRow}>
         {[10, 20, 30].map((value) => (
           <Pressable
@@ -109,8 +162,18 @@ export default function TodayScreen() {
       <ActionButton
         label="আজকের হিফজ শুরু করুন"
         disabled={!ready || !plan}
-        onPress={() => router.push('/session')}
+        onPress={() => router.push('/plan')}
       />
+
+      <Pressable
+        style={styles.recitationLink}
+        onPress={() => router.push('/memorized-surahs')}
+        accessibilityRole="button"
+      >
+        <Mic color={colors.primary} size={16} />
+        <Text style={styles.recitationLinkText}>মুখস্থ সূরা থেকে পড়া দিন</Text>
+        <ChevronRight color={colors.primary} size={16} />
+      </Pressable>
 
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>আজ কী হবে</Text>
@@ -121,30 +184,46 @@ export default function TodayScreen() {
       </View>
 
       <View style={styles.timeline}>
-        {plan?.steps.map((step, index) => (
-          <View key={step.id} style={styles.step}>
-            <View style={styles.track}>
-              <View style={styles.dot}>
-                {index === 0 ? (
-                  <ChevronRight color={colors.white} size={16} />
-                ) : (
-                  <Check color={colors.primary} size={15} />
-                )}
+        {plan?.steps.map((step, index) => {
+          const content = (
+            <>
+              <View style={styles.track}>
+                <View style={styles.dot}>
+                  {index === 0 ? (
+                    <ChevronRight color={colors.white} size={16} />
+                  ) : (
+                    <Check color={colors.primary} size={15} />
+                  )}
+                </View>
+                {index < plan.steps.length - 1 ? <View style={styles.line} /> : null}
               </View>
-              {index < plan.steps.length - 1 ? <View style={styles.line} /> : null}
+              <View style={styles.stepCopy}>
+                <Text style={styles.stepKind}>
+                  {stepLabels[step.kind]}
+                  {step.hasLeechItems ? ' · বিশেষ ঝালাই' : ''}
+                </Text>
+                <Text style={styles.stepTitle}>{step.title}</Text>
+                <Text style={styles.stepMeta}>
+                  {step.ayahKeys.length} আয়াত · {step.estimatedMinutes} মিনিট
+                </Text>
+              </View>
+            </>
+          );
+          return step.kind === 'weakness' ? (
+            <Pressable
+              key={step.id}
+              style={styles.step}
+              onPress={() => router.push('/weak-repair')}
+              accessibilityRole="button"
+            >
+              {content}
+            </Pressable>
+          ) : (
+            <View key={step.id} style={styles.step}>
+              {content}
             </View>
-            <View style={styles.stepCopy}>
-              <Text style={styles.stepKind}>
-                {stepLabels[step.kind]}
-                {step.hasLeechItems ? ' · বিশেষ ঝালাই' : ''}
-              </Text>
-              <Text style={styles.stepTitle}>{step.title}</Text>
-              <Text style={styles.stepMeta}>
-                {step.ayahKeys.length} আয়াত · {step.estimatedMinutes} মিনিট
-              </Text>
-            </View>
-          </View>
-        ))}
+          );
+        })}
       </View>
 
       {plan?.calibrationDay ? (
@@ -160,8 +239,82 @@ export default function TodayScreen() {
   );
 }
 
+function HealthCell({
+  value,
+  label,
+  tone,
+}: {
+  value: number;
+  label: string;
+  tone: string;
+}) {
+  const styles = useThemedStyles(createStyles);
+  return (
+    <View style={styles.healthCell}>
+      <Text style={[styles.healthValue, { color: tone }]}>{value}</Text>
+      <Text style={styles.healthLabel} numberOfLines={1}>
+        {label}
+      </Text>
+    </View>
+  );
+}
+
 function createStyles(colors: ColorPalette) {
   return {
+    headerActions: {
+      flexDirection: 'row' as const,
+      gap: spacing.sm,
+    },
+    gateBanner: {
+      marginBottom: spacing.md,
+      padding: spacing.md,
+      borderRadius: radius.md,
+      backgroundColor: colors.paleGold,
+      borderLeftColor: colors.gold,
+      borderLeftWidth: 3,
+      flexDirection: 'row' as const,
+      alignItems: 'flex-start' as const,
+      gap: spacing.sm,
+    },
+    gateText: {
+      flex: 1,
+      color: colors.ink,
+      fontFamily: typography.bengali,
+      fontSize: 12,
+      lineHeight: 19,
+    },
+    gateStrength: {
+      color: colors.gold,
+      fontFamily: typography.bengaliMedium,
+      fontSize: 15,
+    },
+    healthRow: {
+      flexDirection: 'row' as const,
+      gap: spacing.xs,
+      marginBottom: spacing.md,
+    },
+    healthCell: {
+      flex: 1,
+      minHeight: 58,
+      borderRadius: radius.md,
+      backgroundColor: colors.surface,
+      borderColor: colors.line,
+      borderWidth: 1,
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+      gap: 2,
+      paddingHorizontal: 2,
+    },
+    healthValue: {
+      fontFamily: typography.bengaliMedium,
+      fontSize: 19,
+    },
+    healthLabel: {
+      color: colors.muted,
+      fontFamily: typography.bengali,
+      fontSize: 9,
+      textAlign: 'center' as const,
+    },
     identityRow: {
       flexDirection: 'row' as const,
       alignItems: 'center' as const,
@@ -293,6 +446,19 @@ function createStyles(colors: ColorPalette) {
     },
     durationTextSelected: {
       color: colors.primary,
+    },
+    recitationLink: {
+      minHeight: 44,
+      marginTop: spacing.md,
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+      gap: spacing.xs,
+    },
+    recitationLinkText: {
+      color: colors.primary,
+      fontFamily: typography.bengaliMedium,
+      fontSize: 13,
     },
     sectionHeader: {
       marginTop: spacing.xxl,

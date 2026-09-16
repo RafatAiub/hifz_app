@@ -1,4 +1,10 @@
-import type { MemoryState, SessionEvent, StudentProfile } from '@/domain/types';
+import type {
+  MemoryState,
+  MistakeRecord,
+  RecitationTestSummary,
+  SessionEvent,
+  StudentProfile,
+} from '@/domain/types';
 
 export interface StorageRepository {
   initialize(): Promise<void>;
@@ -6,6 +12,10 @@ export interface StorageRepository {
   saveProfile(profile: StudentProfile): Promise<void>;
   getMemoryStates(): Promise<MemoryState[]>;
   saveMemoryStates(states: MemoryState[]): Promise<void>;
+  getMistakes(): Promise<MistakeRecord[]>;
+  saveMistakes(mistakes: MistakeRecord[]): Promise<void>;
+  getRecitationTests(): Promise<RecitationTestSummary[]>;
+  saveRecitationTests(tests: RecitationTestSummary[]): Promise<void>;
   getSessionEvents(): Promise<SessionEvent[]>;
   appendSessionEvent(event: SessionEvent): Promise<void>;
   getPendingEvents(): Promise<SessionEvent[]>;
@@ -15,6 +25,8 @@ export interface StorageRepository {
 export class MemoryStorageRepository implements StorageRepository {
   private profile: StudentProfile | null = null;
   private memoryStates: MemoryState[] = [];
+  private mistakes: MistakeRecord[] = [];
+  private recitationTests: RecitationTestSummary[] = [];
   private events: SessionEvent[] = [];
 
   async initialize() {}
@@ -33,6 +45,22 @@ export class MemoryStorageRepository implements StorageRepository {
 
   async saveMemoryStates(states: MemoryState[]) {
     this.memoryStates = states;
+  }
+
+  async getMistakes() {
+    return this.mistakes;
+  }
+
+  async saveMistakes(mistakes: MistakeRecord[]) {
+    this.mistakes = mistakes;
+  }
+
+  async getRecitationTests() {
+    return this.recitationTests;
+  }
+
+  async saveRecitationTests(tests: RecitationTestSummary[]) {
+    this.recitationTests = tests;
   }
 
   async getSessionEvents() {

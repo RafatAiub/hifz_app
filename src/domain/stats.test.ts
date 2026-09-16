@@ -6,6 +6,7 @@ import {
   computeSurahForecasts,
   computeSurahProgress,
   computeVelocity,
+  computeWeeklyActivity,
 } from '@/domain/stats';
 import { quranDemoPack } from '@/data/quran-pack';
 import type { AyahKey, SessionEvent } from '@/domain/types';
@@ -124,6 +125,28 @@ describe('computeSurahForecasts', () => {
     const forecasts = computeSurahForecasts(progress, { ayahsPerDay: 1, windowDays: 14 });
     expect(forecasts.some((f) => f.surahNumber === 114)).toBe(false);
     expect(forecasts.some((f) => f.surahNumber === 78)).toBe(false);
+  });
+});
+
+describe('computeWeeklyActivity', () => {
+  const now = new Date('2026-07-28T12:00:00.000Z');
+
+  it('always returns exactly windowDays entries, oldest first, quiet days included', () => {
+    const days = computeWeeklyActivity([], now, 7);
+    expect(days).toHaveLength(7);
+    expect(days[0]!.date).toBe('2026-07-22');
+    expect(days[6]!.date).toBe('2026-07-28');
+    expect(days.every((d) => d.count === 0)).toBe(true);
+  });
+
+  it('counts distinct ayahs touched per day', () => {
+    const events = [
+      event('2026-07-28T06:00:00.000Z', ['78:1', '78:2'] as AyahKey[]),
+      event('2026-07-27T06:00:00.000Z', ['78:3'] as AyahKey[]),
+    ];
+    const days = computeWeeklyActivity(events, now, 7);
+    expect(days.find((d) => d.date === '2026-07-28')?.count).toBe(2);
+    expect(days.find((d) => d.date === '2026-07-27')?.count).toBe(1);
   });
 });
 

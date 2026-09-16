@@ -18,14 +18,35 @@ import {
 
 const EASTERN_ARABIC_DIGITS = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
 
-/** Traditional mushaf end-of-ayah marker: the ۝ ornament with the verse
- * number written in Eastern Arabic numerals inside it. */
-function verseEndOrnament(ayahNumber: number) {
-  const digits = String(ayahNumber)
+function toEasternArabicDigits(value: number) {
+  return String(value)
     .split('')
     .map((d) => EASTERN_ARABIC_DIGITS[Number(d)] ?? d)
     .join('');
-  return ` ۝${digits}`;
+}
+
+/**
+ * End-of-ayah marker drawn as a self-contained circular medallion instead
+ * of relying on the U+06DD font glyph. The two shipped mushaf fonts (KFGQPC
+ * Uthmanic HAFS and Amiri) compose that glyph in incompatible ways, and one
+ * of them renders a stray extra medallion on the web build — a plain View
+ * with the number inside is identical on web, iOS and Android and at every
+ * text scale. The digits use Amiri (always bundled) so the KFGQPC digit
+ * ligatures can't turn a bare number back into an oversized glyph.
+ */
+function VerseNumberMedallion({ number, scale }: { number: number; scale: number }) {
+  const styles = useThemedStyles(createStyles);
+  const size = 30 * scale;
+  return (
+    <View
+      accessibilityLabel={`আয়াত ${number}`}
+      style={[styles.medallion, { width: size, height: size, borderRadius: size / 2 }]}
+    >
+      <Text style={[styles.medallionText, { fontSize: 13 * scale }]}>
+        {toEasternArabicDigits(number)}
+      </Text>
+    </View>
+  );
 }
 
 export function QuranAyahRow({
@@ -42,7 +63,7 @@ export function QuranAyahRow({
   masked?: boolean;
   /** Word-by-word tap-to-reveal self-testing instead of showing the ayah. */
   maskLevel?: MaskLevel;
-  onWordReveal?: () => void;
+  onWordReveal?: (wordIndex: number) => void;
   active?: boolean;
 }) {
   const { profile } = useApp();
@@ -61,20 +82,21 @@ export function QuranAyahRow({
         ) : hidden ? (
           <View accessibilityLabel="আয়াতটি লুকানো আছে" style={styles.hiddenLine} />
         ) : (
-          <TajweedArabicText
-            ayahKey={ayah.key}
-            text={ayah.arabic}
-            trailing={verseEndOrnament(ayah.ayahNumber)}
-            trailingStyle={styles.verseEnd}
-            style={[
-              styles.arabic,
-              {
-                fontFamily: fonts.arabicBold,
-                fontSize: ARABIC_READING_SIZE * scale,
-                lineHeight: ARABIC_READING_LINE_HEIGHT * scale,
-              },
-            ]}
-          />
+          <View style={styles.arabicLine}>
+            <VerseNumberMedallion number={ayah.ayahNumber} scale={scale} />
+            <TajweedArabicText
+              ayahKey={ayah.key}
+              text={ayah.arabic}
+              style={[
+                styles.arabic,
+                {
+                  fontFamily: fonts.arabicBold,
+                  fontSize: ARABIC_READING_SIZE * scale,
+                  lineHeight: ARABIC_READING_LINE_HEIGHT * scale,
+                },
+              ]}
+            />
+          </View>
         )}
         <Text style={[styles.translation, { fontFamily: fonts.bengali }]}>
           {ayah.translationBn}
@@ -102,7 +124,14 @@ function createStyles(colors: ColorPalette) {
     copy: {
       flex: 1,
     },
+    arabicLine: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      justifyContent: 'flex-end' as const,
+      gap: spacing.sm,
+    },
     arabic: {
+      flexShrink: 1,
       color: colors.ink,
       fontFamily: typography.arabicBold,
       fontSize: 36,
@@ -110,15 +139,26 @@ function createStyles(colors: ColorPalette) {
       textAlign: 'right' as const,
       writingDirection: 'rtl' as const,
     },
+    medallion: {
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+      borderWidth: 1.5,
+      borderColor: colors.primary,
+      backgroundColor: colors.mint,
+    },
+    medallionText: {
+      color: colors.primary,
+      fontFamily: typography.amiri,
+      textAlign: 'center' as const,
+      writingDirection: 'ltr' as const,
+      includeFontPadding: false,
+    },
     translation: {
       color: colors.muted,
       fontFamily: typography.bengali,
       fontSize: 14,
       lineHeight: 23,
       marginTop: spacing.xs,
-    },
-    verseEnd: {
-      color: colors.primary,
     },
     hiddenLine: {
       height: 42,
