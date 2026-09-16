@@ -1,8 +1,10 @@
 import { randomUUID } from 'expo-crypto';
 import { router, useLocalSearchParams } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 import {
   ArrowLeft,
   Check,
+  Info,
   Lightbulb,
   Mic,
   Pause,
@@ -65,6 +67,27 @@ const mistakeTypeLabel: Record<MistakeType, string> = {
   EARLY_STOP: 'মাঝপথে থেমে গেছেন',
 };
 
+/** Full, specific Bangla explanation per mistake type -- shown under the
+ * highlighted word on the result screen. Kept separate from
+ * mistakeTypeLabel (a short tag) because the result screen needs the
+ * fuller sentence, and other screens (teacher.tsx) only need the tag. */
+const mistakeExplanation: Record<MistakeType, string> = {
+  OMISSION: 'আপনি এই শব্দটি বলতে ভুলে গিয়েছেন — তিলাওয়াতে এটি বাদ পড়েছে।',
+  SUBSTITUTION: 'আপনি এই শব্দের জায়গায় ভিন্ন একটি শব্দ বলেছেন।',
+  ADDITION: 'এখানে একটি বাড়তি শব্দ বলেছেন, যা মূল আয়াতে নেই।',
+  SEQUENCE: 'শব্দের ক্রম এলোমেলো হয়ে গিয়েছিল।',
+  HESITATION: 'এই জায়গায় এসে আপনি অনেকক্ষণ থেমে গিয়েছিলেন।',
+  PROMPT: 'এই শব্দে আপনি Hint নিয়েছিলেন — নিজে থেকে মনে করতে পারেননি।',
+  HARAKAH: 'এই শব্দের হরকতে সমস্যা হয়েছে বলে মনে হচ্ছে।',
+  TAJWEED: 'এখানে তাজবীদের নিয়মে সমস্যা হয়েছে বলে মনে হচ্ছে।',
+  WAQF: 'এখানে ওয়াক্‌ফ (থামার জায়গা) ঠিক হয়নি বলে মনে হচ্ছে।',
+  MUTASHABIHAT: 'এই আয়াতটি একটি মুতাশাবিহ (মিল থাকা) আয়াতের সঙ্গে গুলিয়ে ফেলেছেন।',
+  WORD_REPETITION: 'আপনি এই শব্দটি টানা দুইবার বলেছেন।',
+  AYAH_SKIPPED: 'পুরো আয়াতটি বাদ দিয়ে সরাসরি পরের আয়াতে চলে গেছেন।',
+  AYAH_REPEATED: 'এই জায়গা থেকে আপনি আয়াতটি আবার নতুন করে শুরু করেছিলেন।',
+  EARLY_STOP: 'তিলাওয়াত এখান থেকে মাঝপথে থামিয়ে দিয়েছেন।',
+};
+
 const errorMessages: Record<string, string> = {
   'not-allowed': 'Microphone/speech recognition permission দেওয়া হয়নি।',
   'audio-capture': 'Microphone থেকে audio পাওয়া যাচ্ছে না।',
@@ -113,6 +136,11 @@ export default function RecitationTestScreen() {
   const [hint, setHint] = useState<HintResult | null>(null);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [error, setError] = useState<RecognizerErrorInfo | null>(null);
+  // Rolling last-N word outcomes -- the "App আমার পড়া অনুসরণ করছে" feedback
+  // strip shown while listening, so mistakes are felt in the moment, not
+  // only discovered at the end.
+  const [liveFeed, setLiveFeed] = useState<Array<{ ok: boolean; id: number }>>([]);
+  const liveFeedIdRef = useRef(0);
   const [summary, setSummary] = useState<ReturnType<typeof summarizeRecitation> | null>(null);
   const [savedMistakes, setSavedMistakes] = useState<MistakeRecord[]>([]);
 
@@ -153,6 +181,21 @@ export default function RecitationTestScreen() {
     return () => clearInterval(id);
   }, [phase]);
 
+  function applyWordToMain(word: string, ts: number) {
+    const before = trackerRef.current;
+    const next = ingestWord(before, word, ts);
+    trackerRef.current = next;
+    setTracker(next);
+    const gotMistake = next.mistakes.length > before.mistakes.length;
+    liveFeedIdRef.current += 1;
+    setLiveFeed((feed) => [...feed.slice(-6), { ok: !gotMistake, id: liveFeedIdRef.current }]);
+    if (gotMistake) {
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    } else {
+      void Haptics.selectionAsync();
+    }
+  }
+
   function attachListeners(onWord: (word: string, ts: number) => void, onFinalReset: () => void) {
     const offResult = recognizerRef.current.onResult((chunk) => {
       const newWords = diffTranscriptWords(lastTranscriptRef.current, chunk.transcript);
@@ -181,15 +224,15 @@ export default function RecitationTestScreen() {
       return;
     }
     lastTranscriptRef.current = '';
-    setTracker(createRecitationTracker(expectedWords));
+    const fresh = createRecitationTracker(expectedWords);
+    trackerRef.current = fresh;
+    setTracker(fresh);
     setHint(null);
+    setLiveFeed([]);
     pausedAccumMsRef.current = 0;
     startedAtRef.current = Date.now();
     setElapsedMs(0);
-    attachListeners(
-      (word, ts) => setTracker((current) => ingestWord(current, word, ts)),
-      () => {},
-    );
+    attachListeners(applyWordToMain, () => {});
     recognizerRef.current.start({ contextWords: expectedWords.map((w) => w.text) });
     setPhase('listening');
   }
@@ -217,9 +260,15 @@ export default function RecitationTestScreen() {
     clearSubscriptions();
     recognizerRef.current.stop();
     const finished = finishRecitation(trackerRef.current, Date.now());
+    trackerRef.current = finished;
     setTracker(finished);
     const result = summarizeRecitation(finished);
     setSummary(result);
+    void Haptics.notificationAsync(
+      result.recall === 'clean'
+        ? Haptics.NotificationFeedbackType.Success
+        : Haptics.NotificationFeedbackType.Warning,
+    );
 
     const testSummary: RecitationTestSummary = {
       id: randomUUID(),
@@ -274,13 +323,15 @@ export default function RecitationTestScreen() {
     const words = expectedWords.filter((w) => w.ayahNumber === ayahNumber);
     lastTranscriptRef.current = '';
     const fresh = createRecitationTracker(words);
+    repairTrackerRef.current = fresh;
     setRepairTracker(fresh);
     setRepairResult(null);
-    attachListeners(
-      (word, ts) =>
-        setRepairTracker((current) => (current ? ingestWord(current, word, ts) : current)),
-      () => {},
-    );
+    attachListeners((word, ts) => {
+      if (!repairTrackerRef.current) return;
+      const next = ingestWord(repairTrackerRef.current, word, ts);
+      repairTrackerRef.current = next;
+      setRepairTracker(next);
+    }, () => {});
     recognizerRef.current.start({ contextWords: words.map((w) => w.text) });
   }
 
@@ -290,9 +341,13 @@ export default function RecitationTestScreen() {
     const current = repairTrackerRef.current;
     if (!current) return;
     const finished = finishRecitation(current, Date.now());
+    repairTrackerRef.current = finished;
     setRepairTracker(finished);
     const clean = finished.mistakes.length === 0;
     setRepairResult(clean ? 'clean' : 'mistakes');
+    void Haptics.notificationAsync(
+      clean ? Haptics.NotificationFeedbackType.Success : Haptics.NotificationFeedbackType.Warning,
+    );
     if (clean) {
       const ayahNumber = repairAyahs[repairIndex]!;
       const toResolve = savedMistakes.filter(
@@ -401,6 +456,16 @@ export default function RecitationTestScreen() {
             {surahAyahs.length}
           </Text>
           <Text style={styles.clock}>{formatClock(elapsedMs)}</Text>
+          {phase === 'listening' && liveFeed.length > 0 ? (
+            <View style={styles.liveFeedRow} accessibilityLabel="সাম্প্রতিক শব্দের ফলাফল">
+              {liveFeed.map((item) => (
+                <View
+                  key={item.id}
+                  style={[styles.liveFeedDot, item.ok ? styles.liveFeedDotOk : styles.liveFeedDotMiss]}
+                />
+              ))}
+            </View>
+          ) : null}
           {hint ? (
             <View style={styles.hintBanner}>
               <Lightbulb color={colors.gold} size={16} />
@@ -526,6 +591,16 @@ export default function RecitationTestScreen() {
         </Text>
       </View>
 
+      <View style={styles.accuracyNote}>
+        <Info color={colors.primary} size={16} />
+        <Text style={styles.accuracyNoteText}>
+          আয়াত ও শব্দ সবসময় কুরআনের মূল পাঠ থেকে সরাসরি মেলানো হয় — এখানে কোনো
+          অনুমান নেই। তবে আপনার কণ্ঠ কী বলেছে তা চেনার কাজটি speech recognition
+          করে, যা কখনো কখনো ভুল শুনতে পারে — তাই প্রতিটি ভুলের পাশে {'“'}নিশ্চিত{'”'}
+          {' '}বা {'“'}সম্ভাব্য{'”'} দেখানো হয়েছে। চূড়ান্ত সিদ্ধান্ত সবসময় উস্তাদের।
+        </Text>
+      </View>
+
       {openMistakes.length > 0 ? (
         <>
           <Text style={styles.sectionTitle}>যেখানে ভুল হয়েছে</Text>
@@ -565,6 +640,7 @@ function toMistakeDraft(
     ayahNumber: event.ayahNumber,
     wordPosition: event.wordIndex,
     type: event.type,
+    detectedWord: event.detectedWord,
     aiConfidence: event.confidence,
   };
 }
@@ -595,6 +671,9 @@ function MistakeCard({
   const ayah = getAyahs([ayahKey])[0];
   const words = ayah ? getWordSkeletons(ayahKey, ayah.arabic) : [];
   const badge = confidenceLabel(mistake.aiConfidence ?? 0.5);
+  const expectedWord =
+    mistake.wordPosition !== null ? words[mistake.wordPosition]?.word ?? null : null;
+  const isAyahLevel = mistake.wordPosition === null;
 
   return (
     <View style={styles.mistakeCard}>
@@ -602,34 +681,69 @@ function MistakeCard({
         <Text style={styles.mistakeAyahLabel}>আয়াত {mistake.ayahNumber}</Text>
         <View style={[styles.confidenceBadge, badge === 'possible' && styles.confidenceBadgePossible]}>
           <Text style={styles.confidenceBadgeText}>
-            {badge === 'confirmed' ? 'Confirmed mistake' : 'Possible mistake'}
+            {badge === 'confirmed' ? 'নিশ্চিত ভুল' : 'সম্ভাব্য ভুল'}
           </Text>
         </View>
       </View>
-      {words.length > 0 ? (
+
+      {isAyahLevel ? (
+        <View style={styles.skippedAyahBlock}>
+          <Text style={[styles.skippedAyahText, { fontFamily: fonts.arabicBold }]}>
+            {ayah?.arabic}
+          </Text>
+        </View>
+      ) : words.length > 0 ? (
         <View style={styles.mistakeWordsRow}>
-          {words.map((w, index) => (
-            <Text
-              key={index}
-              style={[
-                styles.mistakeWord,
-                { fontFamily: fonts.arabicBold },
-                mistake.wordPosition === index && styles.mistakeWordHighlighted,
-              ]}
-            >
-              {w.word}
-            </Text>
-          ))}
+          {words.map((w, index) => {
+            const isTarget = index === mistake.wordPosition;
+            return (
+              <View
+                key={index}
+                style={isTarget ? styles.mistakeWordPill : undefined}
+              >
+                <Text
+                  style={[
+                    styles.mistakeWord,
+                    { fontFamily: fonts.arabicBold },
+                    isTarget && styles.mistakeWordHighlighted,
+                  ]}
+                >
+                  {w.word}
+                </Text>
+              </View>
+            );
+          })}
         </View>
       ) : null}
-      <Text style={styles.mistakeTypeLabel}>{mistakeTypeLabel[mistake.type]}</Text>
-      {mistake.type === 'SUBSTITUTION' ? (
-        <Text style={styles.mistakeDetail}>
-          আপনি {'“'}{mistake.wordPosition !== null ? words[mistake.wordPosition]?.word : ''}
-          {'”'} এর জায়গায় ভিন্ন কিছু বলেছেন।
-        </Text>
+
+      <View style={styles.mistakeExplainRow}>
+        <View style={styles.mistakeTypeChip}>
+          <Text style={styles.mistakeTypeChipText}>{mistakeTypeLabel[mistake.type]}</Text>
+        </View>
+        <Text style={styles.mistakeDetail}>{mistakeExplanation[mistake.type]}</Text>
+      </View>
+
+      {mistake.detectedWord ? (
+        <View style={styles.compareRow}>
+          <View style={[styles.compareBox, styles.compareBoxExpected]}>
+            <Text style={styles.compareLabel}>কুরআনে যা আছে</Text>
+            <Text style={[styles.compareWord, { fontFamily: fonts.arabicBold }]}>
+              {expectedWord ?? '—'}
+            </Text>
+          </View>
+          <View style={[styles.compareBox, styles.compareBoxDetected]}>
+            <Text style={styles.compareLabel}>আপনি যা বলেছেন বলে system বুঝেছে</Text>
+            <Text style={[styles.compareWord, { fontFamily: fonts.arabicBold }]}>
+              {mistake.detectedWord}
+            </Text>
+          </View>
+        </View>
       ) : null}
-      <IconAction label="শুনুন" icon={<Volume2 color={colors.primary} size={18} />} onPress={onPlay} />
+
+      <View style={styles.mistakeActions}>
+        <IconAction label="আয়াতটি শুনুন" icon={<Volume2 color={colors.primary} size={18} />} onPress={onPlay} />
+        <Text style={styles.mistakeActionsLabel}>সঠিক তিলাওয়াত শুনুন</Text>
+      </View>
     </View>
   );
 }
@@ -675,6 +789,15 @@ function createStyles(colors: ColorPalette) {
     },
     ayahProgress: { color: colors.ink, fontFamily: typography.bengaliMedium, fontSize: 40, marginTop: spacing.lg },
     clock: { color: colors.muted, fontFamily: typography.bengali, fontSize: 15, marginTop: spacing.xs },
+    liveFeedRow: {
+      marginTop: spacing.lg,
+      flexDirection: 'row' as const,
+      gap: spacing.xs,
+      minHeight: 10,
+    },
+    liveFeedDot: { width: 10, height: 10, borderRadius: 5 },
+    liveFeedDotOk: { backgroundColor: colors.primary },
+    liveFeedDotMiss: { backgroundColor: colors.coral },
     hintBanner: {
       marginTop: spacing.xl,
       flexDirection: 'row' as const,
@@ -782,12 +905,100 @@ function createStyles(colors: ColorPalette) {
     mistakeWordsRow: {
       flexDirection: 'row-reverse' as const,
       flexWrap: 'wrap' as const,
+      alignItems: 'center' as const,
+      gap: spacing.sm,
+      paddingVertical: spacing.sm,
+    },
+    mistakeWord: {
+      color: colors.ink,
+      fontSize: 30,
+      lineHeight: 52,
+      writingDirection: 'rtl' as const,
+    },
+    mistakeWordPill: {
+      backgroundColor: colors.coral,
+      borderRadius: radius.md,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: 2,
+    },
+    mistakeWordHighlighted: { color: colors.white },
+    skippedAyahBlock: {
+      marginVertical: spacing.sm,
+      padding: spacing.md,
+      borderRadius: radius.md,
+      borderColor: colors.coral,
+      borderWidth: 1,
+      borderStyle: 'dashed' as const,
+      backgroundColor: colors.canvas,
+    },
+    skippedAyahText: {
+      color: colors.ink,
+      fontSize: 26,
+      lineHeight: 46,
+      textAlign: 'right' as const,
+      writingDirection: 'rtl' as const,
+    },
+    mistakeExplainRow: { gap: spacing.xs },
+    mistakeTypeChip: {
+      alignSelf: 'flex-start' as const,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: 3,
+      borderRadius: radius.full,
+      backgroundColor: colors.paleGold,
+    },
+    mistakeTypeChipText: { color: colors.gold, fontFamily: typography.bengaliMedium, fontSize: 11 },
+    mistakeDetail: { color: colors.ink, fontFamily: typography.bengali, fontSize: 13, lineHeight: 21 },
+    compareRow: {
+      marginTop: spacing.sm,
+      flexDirection: 'row' as const,
+      gap: spacing.sm,
+    },
+    compareBox: {
+      flex: 1,
+      padding: spacing.md,
+      borderRadius: radius.md,
+      alignItems: 'center' as const,
       gap: spacing.xs,
     },
-    mistakeWord: { color: colors.ink, fontSize: 20, writingDirection: 'rtl' as const },
-    mistakeWordHighlighted: { color: colors.coral, textDecorationLine: 'underline' as const },
-    mistakeTypeLabel: { color: colors.coral, fontFamily: typography.bengaliMedium, fontSize: 12 },
-    mistakeDetail: { color: colors.muted, fontFamily: typography.bengali, fontSize: 12, lineHeight: 19 },
+    compareBoxExpected: { backgroundColor: colors.mint },
+    compareBoxDetected: { backgroundColor: colors.paleGold },
+    compareLabel: {
+      color: colors.muted,
+      fontFamily: typography.bengali,
+      fontSize: 10,
+      textAlign: 'center' as const,
+    },
+    compareWord: {
+      color: colors.ink,
+      fontSize: 24,
+      writingDirection: 'rtl' as const,
+    },
+    mistakeActions: {
+      marginTop: spacing.xs,
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: spacing.sm,
+    },
+    mistakeActionsLabel: { color: colors.primary, fontFamily: typography.bengaliMedium, fontSize: 12 },
+    accuracyNote: {
+      marginTop: spacing.lg,
+      marginBottom: spacing.sm,
+      flexDirection: 'row' as const,
+      alignItems: 'flex-start' as const,
+      gap: spacing.sm,
+      padding: spacing.md,
+      borderRadius: radius.md,
+      backgroundColor: colors.surface,
+      borderColor: colors.line,
+      borderWidth: 1,
+    },
+    accuracyNoteText: {
+      flex: 1,
+      color: colors.muted,
+      fontFamily: typography.bengali,
+      fontSize: 11,
+      lineHeight: 18,
+    },
     gap: { height: spacing.sm },
   };
 }

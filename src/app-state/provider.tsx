@@ -658,6 +658,7 @@ export function AppProvider({ children }: PropsWithChildren) {
             ayahNumber,
             wordPosition: outcome.lastRevealedWordIndex ?? null,
             type,
+            detectedWord: null,
             sessionId: '',
             occurredAt: now.toISOString(),
             source: 'student',

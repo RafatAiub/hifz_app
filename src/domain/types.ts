@@ -78,6 +78,14 @@ export interface MistakeRecord {
   /** 0-based word index when known (from a masked-word reveal), else null. */
   wordPosition: number | null;
   type: MistakeType;
+  /** What the recognizer actually heard at this position (ADDITION,
+   * SUBSTITUTION, WORD_REPETITION, AYAH_REPEATED) -- the canonical
+   * expected word is always looked up fresh from the Quran text at
+   * ayahKey/wordPosition, never stored, so the two can be shown side by
+   * side without risking the display text drifting from the source. Null
+   * when the mistake type has no specific "what was said" (OMISSION,
+   * AYAH_SKIPPED, HESITATION, EARLY_STOP) or the source isn't ASR. */
+  detectedWord: string | null;
   sessionId: string;
   occurredAt: string;
   source: MistakeSource;

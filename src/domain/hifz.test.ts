@@ -88,6 +88,7 @@ function mistake(ayahKey: AyahKey, overrides: Partial<MistakeRecord> = {}): Mist
     ayahNumber,
     wordPosition: null,
     type: 'SUBSTITUTION' as MistakeType,
+    detectedWord: null,
     sessionId: 's1',
     occurredAt: NOW.toISOString(),
     source: 'student',
