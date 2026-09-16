@@ -87,5 +87,12 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     eas: {
       projectId: '03f55cf8-86ad-4d27-806c-52a286d44cab',
     },
+    // Baked in at build time so an installed APK can state exactly which
+    // commit it came from -- without this there is no way to tell a fresh
+    // sideloaded build from an older one (version/build number stay put
+    // between internal builds), which has already caused "the update isn't
+    // in this build" confusion.
+    buildCommit: (process.env.EAS_BUILD_GIT_COMMIT_HASH ?? '').slice(0, 8) || 'local-dev',
+    buildProfile: process.env.EAS_BUILD_PROFILE ?? 'local',
   },
 });

@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import Constants from 'expo-constants';
 import { router } from 'expo-router';
 import {
   ArrowLeft,
@@ -799,12 +800,26 @@ export default function SettingsScreen() {
           আপনার বেছে নেওয়া file-টি যায়।
         </Text>
       </View>
+
+      <Text style={styles.buildStamp}>
+        {`v${Constants.expoConfig?.version ?? '?'} · build ${
+          (Constants.expoConfig?.extra as { buildCommit?: string } | undefined)?.buildCommit ??
+          'local-dev'
+        }`}
+      </Text>
     </AppScreen>
   );
 }
 
 function createStyles(colors: ColorPalette) {
   return {
+    buildStamp: {
+      marginTop: spacing.xl,
+      color: colors.muted,
+      fontFamily: typography.bengali,
+      fontSize: 10,
+      textAlign: 'center' as const,
+    },
     sectionTitle: {
       color: colors.ink,
       fontFamily: typography.bengaliMedium,
