@@ -692,11 +692,11 @@ export default function SettingsScreen() {
         কুরআন হিফজের সবচেয়ে বরকতময় সময়গুলোতে নিয়মিত স্মরণ করিয়ে দেওয়া হবে।
       </Text>
       <View style={styles.choices}>
-        {[
+        {([
           ['05:30', '🌅 ফজর সবক (০৫:৩০)'],
           ['17:00', '📖 আসর দাওর (১৭:০০)'],
           ['21:30', '🌙 রাত মুরাজাআ (২১:৩০)'],
-        ].map(([timeVal, label]) => (
+        ] as const).map(([timeVal, label]) => (
           <Pressable
             key={timeVal}
             accessibilityRole="radio"
