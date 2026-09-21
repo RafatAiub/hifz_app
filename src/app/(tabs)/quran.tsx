@@ -2,7 +2,9 @@ import { useAudioPlayer } from 'expo-audio';
 import { router } from 'expo-router';
 import {
   BookOpen,
+  CheckCircle2,
   ChevronLeft,
+  Circle,
   Download,
   Eye,
   EyeOff,
@@ -129,7 +131,7 @@ function SurahDetail({
   const colors = useThemeColors();
   const styles = useThemedStyles(createStyles);
   const player = useAudioPlayer();
-  const { memoryStates, mistakes, recitationTests } = useApp();
+  const { memoryStates, mistakes, recitationTests, setSurahMemorized, setActiveSurah } = useApp();
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [viewMode, setViewMode] = useState<'mushaf' | 'list'>('mushaf');
@@ -225,6 +227,25 @@ function SurahDetail({
         {status.weakWordCount > 0 ? ` · দুর্বল ${status.weakWordCount}` : ''}
       </Text>
 
+      <Pressable
+        style={[styles.memorizedTogglePill, isMemorized && styles.memorizedTogglePillActive]}
+        onPress={async () => {
+          await setSurahMemorized(surahNumber, !isMemorized, 'strong');
+        }}
+        accessibilityRole="button"
+      >
+        {isMemorized ? (
+          <CheckCircle2 color={colors.primary} size={18} />
+        ) : (
+          <Circle color={colors.muted} size={18} />
+        )}
+        <Text style={[styles.memorizedToggleText, isMemorized && styles.memorizedToggleTextActive]}>
+          {isMemorized
+            ? 'এই সূরাটি আপনার মুখস্থ তালিকায় আছে (ট্যাপে পরিবর্তন)'
+            : 'এই সূরা কি ইতিমধ্যে মুখস্থ? (ট্যাপ করে মার্ক করুন)'}
+        </Text>
+      </Pressable>
+
       <View style={styles.modeSwitchRow}>
         <Pressable
           style={[styles.modeTab, viewMode === 'mushaf' && styles.modeTabActive]}
@@ -251,28 +272,35 @@ function SurahDetail({
       </View>
 
       <View style={styles.actionRow}>
-        {isMemorized ? (
-          <Pressable
-            style={styles.recitationPrimary}
-            onPress={() => router.push(`/recitation-test?surahNumber=${surahNumber}`)}
-          >
-            <Mic color={colors.white} size={18} />
-            <Text style={styles.recitationPrimaryText}>পড়া দিন</Text>
-          </Pressable>
-        ) : (
-          <Pressable style={styles.actionSecondary} onPress={() => router.push('/plan')}>
-            <GraduationCap color={colors.primary} size={16} />
-            <Text style={styles.actionSecondaryText}>হিফজ শুরু করুন</Text>
-          </Pressable>
-        )}
+        <Pressable
+          style={styles.recitationPrimary}
+          onPress={async () => {
+            await setActiveSurah(surahNumber);
+            router.push(`/session?surahNumber=${surahNumber}`);
+          }}
+        >
+          <GraduationCap color={colors.white} size={18} />
+          <Text style={styles.recitationPrimaryText}>
+            {isMemorized ? 'দাওর / হিফজ শুরু' : 'হিফজ শুরু করুন'}
+          </Text>
+        </Pressable>
+
+        <Pressable
+          style={styles.actionSecondary}
+          onPress={() => router.push(`/recitation-test?surahNumber=${surahNumber}`)}
+        >
+          <Mic color={colors.primary} size={16} />
+          <Text style={styles.actionSecondaryText}>পড়া দিন</Text>
+        </Pressable>
+
         <Pressable
           style={styles.actionSecondary}
           onPress={() =>
-            router.push(status.weakWordCount > 0 ? '/weak-repair' : '/plan')
+            router.push(status.weakWordCount > 0 ? '/weak-repair' : `/session?surahNumber=${surahNumber}`)
           }
         >
           <RotateCcw color={colors.primary} size={16} />
-          <Text style={styles.actionSecondaryText}>রিভিশন করুন</Text>
+          <Text style={styles.actionSecondaryText}>ঝালাই</Text>
         </Pressable>
       </View>
 
@@ -504,6 +532,31 @@ function createStyles(colors: ColorPalette) {
       color: colors.primary,
       fontFamily: typography.bengaliMedium,
       fontSize: 12,
+    },
+    memorizedTogglePill: {
+      marginTop: spacing.sm,
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: spacing.xs,
+      paddingVertical: spacing.xs,
+      paddingHorizontal: spacing.sm,
+      borderRadius: radius.md,
+      backgroundColor: colors.surface,
+      borderColor: colors.line,
+      borderWidth: 1,
+    },
+    memorizedTogglePillActive: {
+      backgroundColor: colors.mint,
+      borderColor: colors.primary,
+    },
+    memorizedToggleText: {
+      color: colors.muted,
+      fontFamily: typography.bengaliMedium,
+      fontSize: 12,
+      flex: 1,
+    },
+    memorizedToggleTextActive: {
+      color: colors.primary,
     },
     actionRow: {
       marginTop: spacing.md,

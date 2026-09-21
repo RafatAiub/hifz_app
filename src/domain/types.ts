@@ -40,6 +40,7 @@ export interface StudentProfile {
   revisionGateEnabled: boolean;
   /** Teacher hard pause: no new Sabaq regardless of the gate. */
   newSabaqPaused: boolean;
+  activeSurahNumber?: number;
   lastActiveAt: string | null;
   createdAt: string;
   updatedAt: string;

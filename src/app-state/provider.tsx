@@ -84,6 +84,9 @@ interface AppContextValue {
   mistakes: MistakeRecord[];
   recitationTests: RecitationTestSummary[];
   repository: StorageRepository;
+  activeSurahNumber: number;
+  setActiveSurah(surahNumber: number): Promise<void>;
+  setRevisionGateEnabled(enabled: boolean): Promise<void>;
   setAvailableMinutes(minutes: number): Promise<void>;
   setThemePreference(preference: StudentProfile['themePreference']): Promise<void>;
   setArabicTextScale(scale: number): Promise<void>;
@@ -161,6 +164,7 @@ function makeDefaultProfile(now: Date): StudentProfile {
     arabicFont: 'uthmanic',
     uiFont: 'sans',
     surahOrder: normalizeSurahOrder([], quranDemoPack),
+    activeSurahNumber: 78,
     maxNewAyahsPerSession: 3,
     hifzStatus: 'new',
     teacherModeEnabled: false,
@@ -187,6 +191,7 @@ function hydrateProfile(raw: Partial<StudentProfile> | null, now: Date): Student
   return {
     ...defaults,
     ...raw,
+    activeSurahNumber: raw.activeSurahNumber ?? defaults.activeSurahNumber,
     surahOrder: normalizeSurahOrder(raw.surahOrder ?? [], quranDemoPack),
   };
 }
@@ -389,6 +394,28 @@ export function AppProvider({ children }: PropsWithChildren) {
   const setSurahOrder = useCallback(
     (order: number[]) =>
       persistProfile({ surahOrder: normalizeSurahOrder(order, quranDemoPack) }, true),
+    [persistProfile],
+  );
+
+  const setActiveSurah = useCallback(
+    async (surahNumber: number) => {
+      const order = profile?.surahOrder ?? [];
+      const nextOrder = [surahNumber, ...order.filter((n) => n !== surahNumber)];
+      await persistProfile(
+        {
+          activeSurahNumber: surahNumber,
+          surahOrder: normalizeSurahOrder(nextOrder, quranDemoPack),
+        },
+        true,
+      );
+    },
+    [persistProfile, profile],
+  );
+
+  const setRevisionGateEnabled = useCallback(
+    async (enabled: boolean) => {
+      await persistProfile({ revisionGateEnabled: enabled }, true);
+    },
     [persistProfile],
   );
 
@@ -830,6 +857,20 @@ export function AppProvider({ children }: PropsWithChildren) {
     };
   }, [events, memoryStates, mistakes, profile?.memorizedAyahKeys]);
 
+  const activeSurahNumber = useMemo(() => {
+    if (profile?.activeSurahNumber) {
+      return profile.activeSurahNumber;
+    }
+    const memorizedSet = new Set(profile?.memorizedAyahKeys ?? []);
+    const order = profile?.surahOrder ?? [];
+    for (const sNum of order) {
+      const surahAyahs = quranDemoPack.ayahs.filter((a) => a.surahNumber === sNum);
+      const isComplete = surahAyahs.length > 0 && surahAyahs.every((a) => memorizedSet.has(a.key));
+      if (!isComplete) return sNum;
+    }
+    return order[0] ?? 78;
+  }, [profile]);
+
   const value = useMemo<AppContextValue>(
     () => ({
       ready,
@@ -840,6 +881,9 @@ export function AppProvider({ children }: PropsWithChildren) {
       mistakes,
       recitationTests,
       repository,
+      activeSurahNumber,
+      setActiveSurah,
+      setRevisionGateEnabled,
       setAvailableMinutes,
       setThemePreference,
       setArabicTextScale,
@@ -873,8 +917,10 @@ export function AppProvider({ children }: PropsWithChildren) {
       recitationTests,
       refreshPlan,
       requestMorePractice,
-      resolveMistake,
-      saveRecitationTest,
+      repository,
+      activeSurahNumber,
+      setActiveSurah,
+      setRevisionGateEnabled,
       setArabicFont,
       setArabicTextScale,
       setAvailableMinutes,

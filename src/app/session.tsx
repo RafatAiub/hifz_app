@@ -15,6 +15,7 @@ import {
   Check,
   ChevronRight,
   Eye,
+  EyeOff,
   Infinity as InfinityIcon,
   Link2,
   ListRestart,
@@ -154,18 +155,45 @@ function averageRating(ratings: RecallRating[]): RecallRating {
 
 export default function SessionScreen() {
   const { plan, profile, completeSession } = useApp();
-  const { focus } = useLocalSearchParams<{ focus?: string }>();
+  const { focus, surahNumber, startAyah } = useLocalSearchParams<{
+    focus?: string;
+    surahNumber?: string;
+    startAyah?: string;
+  }>();
   const teacherMode = profile?.teacherModeEnabled ?? false;
   const colors = useThemeColors();
   const styles = useThemedStyles(createStyles);
   const fonts = useTypography();
   const units = useMemo<SessionUnit[]>(() => {
+    if (surahNumber) {
+      const sNum = Number(surahNumber);
+      const surahAyahs = quranDemoPack.ayahs.filter((a) => a.surahNumber === sNum);
+      if (surahAyahs.length > 0) {
+        const memorizedSet = new Set(profile?.memorizedAyahKeys ?? []);
+        const startNum = startAyah ? Number(startAyah) : null;
+        let targetAyahs = surahAyahs;
+        if (startNum) {
+          targetAyahs = surahAyahs.filter((a) => a.ayahNumber >= startNum);
+        } else {
+          const unmemorized = surahAyahs.filter((a) => !memorizedSet.has(a.key));
+          if (unmemorized.length > 0) {
+            targetAyahs = unmemorized.slice(0, Math.max(3, profile?.maxNewAyahsPerSession ?? 3));
+          } else {
+            targetAyahs = surahAyahs;
+          }
+        }
+        return targetAyahs.map((ayah) => ({
+          ayah,
+          kind: (memorizedSet.has(ayah.key) ? 'manzil' : 'new') as SessionStepKind,
+        }));
+      }
+    }
     if (!plan) return [];
     const all = plan.steps.flatMap((step) =>
       getAyahs(step.ayahKeys).map((ayah) => ({ ayah, kind: step.kind })),
     );
     return focus === 'weakness' ? all.filter((item) => item.kind === 'weakness') : all;
-  }, [plan, focus]);
+  }, [plan, focus, surahNumber, startAyah, profile]);
   const newAyahKeys = useMemo(
     () => new Set(units.filter((item) => item.kind === 'new').map((item) => item.ayah.key)),
     [units],
@@ -176,6 +204,7 @@ export default function SessionScreen() {
   const [chunkIndex, setChunkIndex] = useState(1);
   const sessionStartedAt = useRef(Date.now());
   const [maskLevel, setMaskLevel] = useState<MaskLevel>(0);
+  const [reviewMasked, setReviewMasked] = useState(false);
   const [attemptHints, setAttemptHints] = useState(0);
   const [ayahHints, setAyahHints] = useState(0);
   const [ayahRepetitions, setAyahRepetitions] = useState(0);
@@ -446,6 +475,7 @@ export default function SessionScreen() {
   function resetAyahState() {
     setChunkIndex(1);
     setMaskLevel(0);
+    setReviewMasked(false);
     setAttemptHints(0);
     setAyahHints(0);
     setAyahRepetitions(0);
@@ -504,7 +534,7 @@ export default function SessionScreen() {
     await Sharing.shareAsync(recordingUri, { dialogTitle: 'তিলাওয়াত teacher-কে পাঠান' });
   }
 
-  if (!plan || !unit || !currentAyah) {
+  if (!unit || !currentAyah) {
     return (
       <AppScreen scroll={false} hasTabBar={false} contentStyle={styles.center}>
         <ActivityIndicator color={colors.primary} />
@@ -676,11 +706,38 @@ export default function SessionScreen() {
             </View>
           </>
         ) : null}
+        <View style={styles.mushafActionBar}>
+          <Pressable
+            style={[styles.maskToggleBtn, reviewMasked && styles.maskToggleBtnActive]}
+            onPress={() => setReviewMasked(!reviewMasked)}
+            accessibilityRole="button"
+          >
+            {reviewMasked ? (
+              <>
+                <Eye color={colors.primary} size={15} />
+                <Text style={styles.maskToggleText}>আয়াত দেখুন (Unmask)</Text>
+              </>
+            ) : (
+              <>
+                <EyeOff color={colors.muted} size={15} />
+                <Text style={styles.maskToggleText}>হিফজ টেস্ট (আয়াত লুকান)</Text>
+              </>
+            )}
+          </Pressable>
+          <Pressable
+            style={styles.fullMushafLink}
+            onPress={() => router.push('/quran')}
+            accessibilityRole="button"
+          >
+            <Text style={styles.fullMushafLinkText}>মুসহাফ পাতা</Text>
+            <ChevronRight color={colors.primary} size={14} />
+          </Pressable>
+        </View>
         <QuranAyahRow
-          key={`${currentAyah.key}-${phase}-${maskLevel}`}
+          key={`${currentAyah.key}-${phase}-${maskLevel}-${reviewMasked}`}
           ayah={currentAyah}
           active={phase !== 'listen'}
-          maskLevel={phase === 'attempt' ? maskLevel : phase === 'chain' || phase === 'review' ? 2 : undefined}
+          maskLevel={phase === 'attempt' ? maskLevel : reviewMasked ? 2 : undefined}
           onWordReveal={registerHint}
         />
       </ScrollView>
@@ -914,8 +971,90 @@ export default function SessionScreen() {
 
         {phase === 'review' ? (
           <>
-            <Text style={styles.reviewQuestion}>না দেখে কেমন হলো?</Text>
-            <RatingGrid selected={null} onSelect={rateReview} compact />
+            <View style={styles.repeatRow}>
+              <Repeat color={colors.muted} size={15} />
+              {REPEAT_COUNTS.map((value) => (
+                <Pressable
+                  key={value}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: repeatCount === value }}
+                  onPress={() => setRepeatCount(value)}
+                  style={[styles.repeatChip, repeatCount === value && styles.repeatChipActive]}
+                >
+                  {value === 0 ? (
+                    <InfinityIcon
+                      color={repeatCount === value ? colors.primary : colors.muted}
+                      size={14}
+                    />
+                  ) : (
+                    <Text
+                      style={[
+                        styles.repeatChipText,
+                        repeatCount === value && styles.repeatChipTextActive,
+                      ]}
+                    >
+                      {value}×
+                    </Text>
+                  )}
+                </Pressable>
+              ))}
+            </View>
+            <ActionButton
+              label={
+                busy
+                  ? 'Audio প্রস্তুত হচ্ছে…'
+                  : playerStatus.playing
+                    ? 'তিলাওয়াত থামান'
+                    : `শুনুন ও উচ্চারণ মিলিয়ে নিন (${repeatCount === 0 ? 'টানা' : `${repeatCount} বার`})`
+              }
+              loading={busy}
+              tone={playerStatus.playing ? 'danger' : 'secondary'}
+              icon={
+                playerStatus.playing ? (
+                  <Pause color={colors.white} size={20} />
+                ) : (
+                  <Volume2 color={colors.primary} size={20} />
+                )
+              }
+              onPress={() => {
+                if (playerStatus.playing) stopPlayback();
+                else void playAyah();
+              }}
+            />
+
+            <View style={styles.quickSelfEvalRow}>
+              <Text style={styles.quickEvalLabel}>না দেখে কেমন হলো? এক ট্যাপে মূল্যায়ন:</Text>
+              <View style={styles.quickEvalButtons}>
+                <Pressable
+                  style={[styles.quickEvalBtn, styles.quickEvalBtnGreen]}
+                  onPress={() => rateReview('good')}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.quickEvalBtnTextGreen}>🟢 পাকা (পরবর্তী)</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.quickEvalBtn, styles.quickEvalBtnGold]}
+                  onPress={() => rateReview('hard')}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.quickEvalBtnTextGold}>🟡 আটকেছি</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.quickEvalBtn, styles.quickEvalBtnRed]}
+                  onPress={() => rateReview('again')}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.quickEvalBtnTextRed}>🔴 কাঁচা</Text>
+                </Pressable>
+              </View>
+            </View>
+
+            <View style={styles.secondarySessionLinks}>
+              <Pressable style={styles.textAction} onPress={startChunk}>
+                <Text style={styles.textActionLabel}>৪ ধাপের পূর্ণাঙ্গ অনুশীলন শুরু করুন</Text>
+                <ChevronRight color={colors.primary} size={16} />
+              </Pressable>
+            </View>
           </>
         ) : null}
       </View>
@@ -1245,6 +1384,44 @@ function createStyles(colors: ColorPalette) {
       alignItems: 'center' as const,
       marginTop: spacing.xs,
       paddingHorizontal: 4,
+    },
+    mushafActionBar: {
+      flexDirection: 'row' as const,
+      justifyContent: 'space-between' as const,
+      alignItems: 'center' as const,
+      paddingVertical: spacing.xs,
+      paddingHorizontal: spacing.xs,
+      marginBottom: spacing.xs,
+    },
+    maskToggleBtn: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: 6,
+      paddingVertical: 6,
+      paddingHorizontal: spacing.sm,
+      borderRadius: radius.full,
+      backgroundColor: colors.surface,
+      borderColor: colors.line,
+      borderWidth: 1,
+    },
+    maskToggleBtnActive: {
+      backgroundColor: colors.mint,
+      borderColor: colors.primary,
+    },
+    maskToggleText: {
+      color: colors.ink,
+      fontFamily: typography.bengaliMedium,
+      fontSize: 12,
+    },
+    fullMushafLink: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: 4,
+    },
+    fullMushafLinkText: {
+      color: colors.primary,
+      fontFamily: typography.bengaliMedium,
+      fontSize: 12,
     },
   };
 }
