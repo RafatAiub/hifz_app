@@ -13,6 +13,7 @@ import * as Sharing from 'expo-sharing';
 import {
   ArrowLeft,
   Check,
+  ChevronRight,
   Eye,
   Infinity as InfinityIcon,
   Link2,
@@ -723,32 +724,70 @@ export default function SessionScreen() {
               ))}
             </View>
             <ActionButton
-              label={busy ? 'Audio প্রস্তুত হচ্ছে' : 'রেফারেন্স শুনুন'}
+              label={
+                busy
+                  ? 'Audio প্রস্তুত হচ্ছে…'
+                  : playerStatus.playing
+                    ? 'তিলাওয়াত থামান'
+                    : `শুনুন ও তিকরার লুপ (${repeatCount === 0 ? 'টানা' : `${repeatCount} বার`})`
+              }
               loading={busy}
-              icon={<Volume2 color={colors.white} size={20} />}
-              onPress={() => void playAyah()}
+              tone={playerStatus.playing ? 'danger' : 'primary'}
+              icon={
+                playerStatus.playing ? (
+                  <Pause color={colors.white} size={20} />
+                ) : (
+                  <Volume2 color={colors.white} size={20} />
+                )
+              }
+              onPress={() => {
+                if (playerStatus.playing) stopPlayback();
+                else void playAyah();
+              }}
             />
-            {stepUnits.length > 1 ? (
+
+            <View style={styles.quickSelfEvalRow}>
+              <Text style={styles.quickEvalLabel}>না দেখে কেমন হলো? এক ট্যাপে মূল্যায়ন:</Text>
+              <View style={styles.quickEvalButtons}>
+                <Pressable
+                  style={[styles.quickEvalBtn, styles.quickEvalBtnGreen]}
+                  onPress={() => rateReview('good')}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.quickEvalBtnTextGreen}>🟢 পাকা (পরবর্তী)</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.quickEvalBtn, styles.quickEvalBtnGold]}
+                  onPress={() => rateReview('hard')}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.quickEvalBtnTextGold}>🟡 আটকেছি</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.quickEvalBtn, styles.quickEvalBtnRed]}
+                  onPress={() => rateReview('again')}
+                  accessibilityRole="button"
+                >
+                  <Text style={styles.quickEvalBtnTextRed}>🔴 কাঁচা</Text>
+                </Pressable>
+              </View>
+            </View>
+
+            <View style={styles.secondarySessionLinks}>
               <Pressable
                 style={styles.textAction}
-                onPress={() => void startPlayback(stepUnits.map((item) => item.ayah))}
+                onPress={() => setMaskLevel((m) => (m === 0 ? 2 : 0))}
               >
-                <ListRestart color={colors.primary} size={18} />
+                <Eye color={colors.gold} size={16} />
                 <Text style={styles.textActionLabel}>
-                  পুরো ধাপ ({stepUnits.length} আয়াত) টানা শুনুন
+                  {maskLevel === 0 ? 'স্মরণ টেস্ট (আয়াত লুকান)' : 'আয়াত দেখান'}
                 </Text>
               </Pressable>
-            ) : null}
-            {playerStatus.playing ? (
-              <Pressable style={styles.textAction} onPress={stopPlayback}>
-                <Pause color={colors.primary} size={18} />
-                <Text style={styles.textActionLabel}>থামান</Text>
+              <Pressable style={styles.textAction} onPress={startChunk}>
+                <Text style={styles.textActionLabel}>নির্দেশিত অনুশীলন (৪ ধাপ)</Text>
+                <ChevronRight color={colors.primary} size={16} />
               </Pressable>
-            ) : null}
-            <Pressable style={styles.textAction} onPress={startChunk}>
-              <Text style={styles.textActionLabel}>আমি শুনেছি, পরবর্তী</Text>
-              <ArrowLeft color={colors.primary} size={18} />
-            </Pressable>
+            </View>
           </>
         ) : null}
 
@@ -1142,6 +1181,70 @@ function createStyles(colors: ColorPalette) {
     stepperLabelActive: {
       color: colors.ink,
       fontFamily: typography.bengaliMedium,
+    },
+    quickSelfEvalRow: {
+      marginTop: spacing.sm,
+      padding: spacing.sm,
+      borderRadius: radius.md,
+      backgroundColor: colors.surface,
+      borderColor: colors.line,
+      borderWidth: 1,
+      gap: 6,
+    },
+    quickEvalLabel: {
+      color: colors.muted,
+      fontFamily: typography.bengaliMedium,
+      fontSize: 11,
+      textAlign: 'center' as const,
+    },
+    quickEvalButtons: {
+      flexDirection: 'row' as const,
+      gap: 6,
+    },
+    quickEvalBtn: {
+      flex: 1,
+      minHeight: 38,
+      borderRadius: radius.sm,
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+      paddingHorizontal: 4,
+    },
+    quickEvalBtnGreen: {
+      backgroundColor: colors.mint,
+      borderColor: colors.primary,
+      borderWidth: 1,
+    },
+    quickEvalBtnGold: {
+      backgroundColor: colors.paleGold,
+      borderColor: colors.gold,
+      borderWidth: 1,
+    },
+    quickEvalBtnRed: {
+      backgroundColor: '#FDEEE9',
+      borderColor: colors.coral,
+      borderWidth: 1,
+    },
+    quickEvalBtnTextGreen: {
+      color: colors.primary,
+      fontFamily: typography.bengaliMedium,
+      fontSize: 11,
+    },
+    quickEvalBtnTextGold: {
+      color: '#8C660D',
+      fontFamily: typography.bengaliMedium,
+      fontSize: 11,
+    },
+    quickEvalBtnTextRed: {
+      color: colors.coral,
+      fontFamily: typography.bengaliMedium,
+      fontSize: 11,
+    },
+    secondarySessionLinks: {
+      flexDirection: 'row' as const,
+      justifyContent: 'space-between' as const,
+      alignItems: 'center' as const,
+      marginTop: spacing.xs,
+      paddingHorizontal: 4,
     },
   };
 }

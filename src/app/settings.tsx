@@ -687,7 +687,41 @@ export default function SettingsScreen() {
 
       <View style={styles.divider} />
 
-      <Text style={styles.sectionTitle}>Reminder</Text>
+      <Text style={styles.sectionTitle}>স্মার্ট নামাজ-ভিত্তিক রিমাইন্ডার</Text>
+      <Text style={styles.body}>
+        কুরআন হিফজের সবচেয়ে বরকতময় সময়গুলোতে নিয়মিত স্মরণ করিয়ে দেওয়া হবে।
+      </Text>
+      <View style={styles.choices}>
+        {[
+          ['05:30', '🌅 ফজর সবক (০৫:৩০)'],
+          ['17:00', '📖 আসর দাওর (১৭:০০)'],
+          ['21:30', '🌙 রাত মুরাজাআ (২১:৩০)'],
+        ].map(([timeVal, label]) => (
+          <Pressable
+            key={timeVal}
+            accessibilityRole="radio"
+            accessibilityState={{ checked: reminderTime === timeVal }}
+            onPress={() => {
+              setReminderTime(timeVal);
+              void scheduleDailyReminder(timeVal).then((ok) => {
+                setMessage(ok ? `${label} সফলভাবে সক্রিয় করা হয়েছে।` : 'ডিভাইসে নোটিফিকেশন অনুমতি দিন।');
+              });
+            }}
+            style={[styles.choice, reminderTime === timeVal && styles.choiceSelected]}
+          >
+            <Text
+              style={[
+                styles.choiceText,
+                reminderTime === timeVal && styles.choiceTextSelected,
+              ]}
+            >
+              {label}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+
+      <Text style={styles.subLabel}>কাস্টম সময় নির্ধারণ (ঘণ্টা:মিনিট)</Text>
       <View style={styles.inline}>
         <TextInput
           accessibilityLabel="Reminder সময়"
@@ -699,7 +733,7 @@ export default function SettingsScreen() {
           style={styles.input}
         />
         <IconAction
-          label="Reminder চালু করুন"
+          label="সেট করুন"
           icon={<Bell color={colors.primary} size={21} />}
           onPress={() => void enableReminder()}
         />

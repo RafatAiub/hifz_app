@@ -1,13 +1,45 @@
+import { Image, View, StyleSheet } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 
 import { useThemeColors } from '@/theme/theme-context';
 
-/** Sacred crescent emblem: a simple crescent moon with a small star,
- * matching the app's gold accent. Used as a light spiritual touch on the
- * home screen, not as a religious authority mark. */
-export function BrandMark({ size = 28, color }: { size?: number; color?: string }) {
+/** Sacred emblem: renders the 3D Holy Quran icon by default, with an optional
+ * fallback or vector variant. Used as a high-fidelity spiritual touch on the
+ * home screen and navigation bars. */
+export function BrandMark({
+  size = 36,
+  color,
+  variant = '3d',
+}: {
+  size?: number;
+  color?: string;
+  variant?: '3d' | 'vector';
+}) {
   const colors = useThemeColors();
   const fill = color ?? colors.gold;
+
+  if (variant === '3d') {
+    return (
+      <View
+        style={[
+          styles.imageContainer,
+          {
+            width: size,
+            height: size,
+            borderRadius: size * 0.26,
+            borderColor: colors.gold,
+          },
+        ]}
+      >
+        <Image
+          source={require('../../assets/icon.png')}
+          style={{ width: size, height: size, borderRadius: size * 0.26 }}
+          resizeMode="cover"
+        />
+      </View>
+    );
+  }
+
   return (
     <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
       <Path
@@ -21,3 +53,15 @@ export function BrandMark({ size = 28, color }: { size?: number; color?: string 
     </Svg>
   );
 }
+
+const styles = StyleSheet.create({
+  imageContainer: {
+    overflow: 'hidden',
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+});

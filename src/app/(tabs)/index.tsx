@@ -9,10 +9,12 @@ import {
   RotateCcw,
   Settings,
   ShieldAlert,
+  Sparkles,
 } from 'lucide-react-native';
 import { Pressable, Text, View } from 'react-native';
 
 import { useApp } from '@/app-state/provider';
+import { BrandMark } from '@/components/brand-mark';
 import { ActionButton, AppScreen, IconAction } from '@/components/ui';
 import type { RevisionGateReason, SessionStepKind } from '@/domain/types';
 import { useThemedStyles } from '@/theme/create-styles';
@@ -77,15 +79,30 @@ export default function TodayScreen() {
     >
       <View style={styles.identityRow}>
         <View style={styles.wordmark}>
-          <Text style={styles.wordmarkArabic}>حِفْظ</Text>
+          <BrandMark size={42} />
           <View>
-            <Text style={styles.wordmarkName}>HIFZ</Text>
-            <Text style={styles.wordmarkNote}>শান্তভাবে, প্রতিদিন</Text>
+            <View style={styles.wordmarkTitleRow}>
+              <Text style={styles.wordmarkArabic}>حِفْظ</Text>
+              <Text style={styles.wordmarkDot}>·</Text>
+              <Text style={styles.wordmarkName}>HIFZ</Text>
+            </View>
+            <Text style={styles.wordmarkNote}>পবিত্র কুরআন হিফজের শান্ত সহচর</Text>
           </View>
         </View>
         {stats.streak.currentStreak > 0 ? (
-          <Text style={styles.continuity}>{stats.streak.currentStreak} দিন ধারাবাহিক</Text>
+          <View style={styles.continuityBadge}>
+            <Sparkles color={colors.gold} size={14} />
+            <Text style={styles.continuity}>{stats.streak.currentStreak} দিন ধারাবাহিক</Text>
+          </View>
         ) : null}
+      </View>
+
+      <View style={styles.hadithCard}>
+        <Text style={styles.hadithArabic}>خَيْرُكُمْ مَنْ تَعَلَّمَ الْقُرْآنَ وَعَلَّمَهُ</Text>
+        <Text style={styles.hadithBangla}>
+          “তোমাদের মধ্যে সর্বোত্তম ব্যক্তি সে, যে নিজে কুরআন শেখে এবং অন্যকে শেখায়।”
+        </Text>
+        <Text style={styles.hadithSource}>— সহীহ বুখারী ৫০২৭</Text>
       </View>
 
       <View style={styles.focusBand}>
@@ -93,17 +110,23 @@ export default function TodayScreen() {
           <View style={styles.readyRow}>
             <BookOpenCheck color={colors.gold} size={18} />
             <Text style={styles.readyText}>
-              {plan?.isRecoveryPlan ? 'আজ হালকা পুনরুদ্ধার' : 'আজকের পথ প্রস্তুত'}
+              {plan?.isRecoveryPlan ? 'আজকের হালকা পুনরুদ্ধার' : 'আজকের হিফজ ও দাওর প্রস্তুত'}
             </Text>
           </View>
           <View style={styles.durationStatement}>
             <Text style={styles.bigNumber}>{plan?.estimatedMinutes ?? minutes}</Text>
-            <Text style={styles.minuteLabel}>মিনিট</Text>
+            <Text style={styles.minuteLabel}>মিনিট লক্ষ্য</Text>
           </View>
           <View style={styles.planFacts}>
-            <Text style={styles.planFact}>{reviewAyahs} ঝালাই</Text>
+            <View style={styles.madrasahTag}>
+              <Text style={styles.madrasahTagLabel}>সবক়ি/মনজিল:</Text>
+              <Text style={styles.madrasahTagVal}>{reviewAyahs} আয়াত</Text>
+            </View>
             <View style={styles.factDivider} />
-            <Text style={styles.planFact}>{newAyahs} নতুন আয়াত</Text>
+            <View style={styles.madrasahTag}>
+              <Text style={styles.madrasahTagLabel}>নতুন সবক:</Text>
+              <Text style={styles.madrasahTagVal}>{newAyahs} আয়াত</Text>
+            </View>
           </View>
         </View>
         <View style={[styles.ring, { width: ringSize, height: ringSize, borderRadius: ringSize / 2 }]}>
@@ -121,7 +144,7 @@ export default function TodayScreen() {
           <Text style={styles.gateText}>
             {gate.blocked && gateCopy[gate.reason]
               ? gateCopy[gate.reason]
-              : 'নতুন সবক খোলা আছে।'}
+              : 'সবক়ি ও মনজিল মজবুত — নতুন সবক খোলা আছে।'}
           </Text>
           <Text style={styles.gateStrength}>
             {Math.round(((gate.sabqiRetention + gate.manzilRetention) / 2) * 100)}%
@@ -131,8 +154,8 @@ export default function TodayScreen() {
 
       {health.total > 0 ? (
         <View style={styles.healthRow}>
-          <HealthCell value={health.total} label="মোট" tone={colors.ink} />
-          <HealthCell value={health.strong} label="শক্ত" tone={colors.primary} />
+          <HealthCell value={health.total} label="মোট হিফজ" tone={colors.ink} />
+          <HealthCell value={health.strong} label="পাকা" tone={colors.primary} />
           <HealthCell value={health.needsRevision} label="ঝালাই দরকার" tone={colors.gold} />
           <HealthCell value={health.weak} label="দুর্বল" tone={colors.coral} />
         </View>
@@ -160,23 +183,34 @@ export default function TodayScreen() {
       </View>
 
       <ActionButton
-        label="আজকের হিফজ শুরু করুন"
+        label="বিসমিল্লাহ — আজকের হিফজ শুরু করুন"
         disabled={!ready || !plan}
-        onPress={() => router.push('/plan')}
+        onPress={() => router.push('/session')}
       />
 
-      <Pressable
-        style={styles.recitationLink}
-        onPress={() => router.push('/memorized-surahs')}
-        accessibilityRole="button"
-      >
-        <Mic color={colors.primary} size={16} />
-        <Text style={styles.recitationLinkText}>মুখস্থ সূরা থেকে পড়া দিন</Text>
-        <ChevronRight color={colors.primary} size={16} />
-      </Pressable>
+      <View style={styles.quickActionLinks}>
+        <Pressable
+          style={styles.quickActionPill}
+          onPress={() => router.push('/plan')}
+          accessibilityRole="button"
+        >
+          <Clock3 color={colors.primary} size={15} />
+          <Text style={styles.quickActionText}>আজকের পর্যায়ক্রম দেখুন</Text>
+          <ChevronRight color={colors.primary} size={14} />
+        </Pressable>
+        <Pressable
+          style={styles.quickActionPill}
+          onPress={() => router.push('/memorized-surahs')}
+          accessibilityRole="button"
+        >
+          <Mic color={colors.primary} size={15} />
+          <Text style={styles.quickActionText}>মুখস্থ সূরা পরীক্ষা</Text>
+          <ChevronRight color={colors.primary} size={14} />
+        </Pressable>
+      </View>
 
       <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>আজ কী হবে</Text>
+        <Text style={styles.sectionTitle}>আজকের তারতীব (পর্যায়ক্রম)</Text>
         <View style={styles.time}>
           <Clock3 color={colors.muted} size={16} />
           <Text style={styles.timeText}>{plan?.estimatedMinutes ?? 0} মিনিট</Text>
@@ -327,26 +361,79 @@ function createStyles(colors: ColorPalette) {
       alignItems: 'center' as const,
       gap: spacing.sm,
     },
+    wordmarkTitleRow: {
+      flexDirection: 'row' as const,
+      alignItems: 'baseline' as const,
+      gap: 4,
+    },
     wordmarkArabic: {
       color: colors.primary,
       fontFamily: typography.arabicBold,
-      fontSize: 24,
-      lineHeight: 34,
+      fontSize: 22,
+      lineHeight: 30,
+    },
+    wordmarkDot: {
+      color: colors.gold,
+      fontSize: 14,
+      fontWeight: 'bold' as const,
     },
     wordmarkName: {
       color: colors.ink,
       fontFamily: typography.bengaliMedium,
-      fontSize: 11,
+      fontSize: 13,
+      letterSpacing: 0.5,
     },
     wordmarkNote: {
       color: colors.muted,
       fontFamily: typography.bengali,
       fontSize: 10,
     },
+    continuityBadge: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: 4,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: 4,
+      borderRadius: radius.full,
+      backgroundColor: colors.paleGold,
+      borderWidth: 1,
+      borderColor: colors.gold,
+    },
     continuity: {
-      color: colors.muted,
+      color: colors.ink,
       fontFamily: typography.bengaliMedium,
       fontSize: 11,
+    },
+    hadithCard: {
+      marginBottom: spacing.md,
+      padding: spacing.md,
+      borderRadius: radius.md,
+      backgroundColor: colors.surface,
+      borderColor: colors.gold,
+      borderWidth: 1,
+      borderLeftWidth: 4,
+      borderLeftColor: colors.primary,
+    },
+    hadithArabic: {
+      color: colors.primary,
+      fontFamily: typography.arabicBold,
+      fontSize: 16,
+      textAlign: 'right' as const,
+      writingDirection: 'rtl' as const,
+      marginBottom: 4,
+    },
+    hadithBangla: {
+      color: colors.ink,
+      fontFamily: typography.bengali,
+      fontSize: 12,
+      lineHeight: 19,
+    },
+    hadithSource: {
+      color: colors.muted,
+      fontFamily: typography.bengaliMedium,
+      fontSize: 10,
+      marginTop: 4,
+      textAlign: 'right' as const,
     },
     focusBand: {
       minHeight: 176,
@@ -395,7 +482,47 @@ function createStyles(colors: ColorPalette) {
     planFacts: {
       flexDirection: 'row' as const,
       alignItems: 'center' as const,
+      gap: spacing.xs,
+      flexWrap: 'wrap' as const,
+      marginTop: 4,
+    },
+    madrasahTag: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: 3,
+    },
+    madrasahTagLabel: {
+      color: colors.onSpotlightMuted,
+      fontFamily: typography.bengali,
+      fontSize: 11,
+    },
+    madrasahTagVal: {
+      color: colors.gold,
+      fontFamily: typography.bengaliMedium,
+      fontSize: 11,
+    },
+    quickActionLinks: {
+      flexDirection: 'row' as const,
       gap: spacing.sm,
+      marginTop: spacing.md,
+    },
+    quickActionPill: {
+      flex: 1,
+      minHeight: 42,
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+      gap: 5,
+      paddingHorizontal: spacing.sm,
+      borderRadius: radius.md,
+      backgroundColor: colors.mint,
+      borderWidth: 1,
+      borderColor: colors.line,
+    },
+    quickActionText: {
+      color: colors.primary,
+      fontFamily: typography.bengaliMedium,
+      fontSize: 12,
     },
     planFact: {
       color: colors.onSpotlightMuted,

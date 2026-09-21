@@ -143,6 +143,7 @@ export default function RecitationTestScreen() {
   const liveFeedIdRef = useRef(0);
   const [summary, setSummary] = useState<ReturnType<typeof summarizeRecitation> | null>(null);
   const [savedMistakes, setSavedMistakes] = useState<MistakeRecord[]>([]);
+  const [selfRating, setSelfRating] = useState<'mutqan' | 'good' | 'assisted' | 'weak' | null>(null);
 
   const recognizerRef = useRef(createExpoQuranRecognizer());
   const lastTranscriptRef = useRef('');
@@ -591,6 +592,71 @@ export default function RecitationTestScreen() {
         </Text>
       </View>
 
+      <View style={styles.selfEvalCard}>
+        <Text style={styles.selfEvalTitle}>আপনার নিজের বিবেচনায় তিলাওয়াত কেমন হলো?</Text>
+        <Text style={styles.selfEvalSubtitle}>কুরআনের সাথে আত্মমূল্যায়ন সততা ও একনিষ্ঠতা বাড়ায়</Text>
+        <View style={styles.selfEvalGrid}>
+          <Pressable
+            style={[styles.selfEvalOption, selfRating === 'mutqan' && styles.selfEvalOptionActiveGreen]}
+            onPress={() => setSelfRating('mutqan')}
+            accessibilityRole="radio"
+            accessibilityState={{ checked: selfRating === 'mutqan' }}
+          >
+            <Text style={styles.selfEvalBadge}>مُتْقَن</Text>
+            <Text style={styles.selfEvalOptionTitle}>মুতকান</Text>
+            <Text style={styles.selfEvalOptionNote}>একদম স্বচ্ছল ও নিখুঁত</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.selfEvalOption, selfRating === 'good' && styles.selfEvalOptionActiveBlue]}
+            onPress={() => setSelfRating('good')}
+            accessibilityRole="radio"
+            accessibilityState={{ checked: selfRating === 'good' }}
+          >
+            <Text style={styles.selfEvalBadge}>جَيِّد</Text>
+            <Text style={styles.selfEvalOptionTitle}>ভালো</Text>
+            <Text style={styles.selfEvalOptionNote}>সামান্য আটকেছি</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.selfEvalOption, selfRating === 'assisted' && styles.selfEvalOptionActiveGold]}
+            onPress={() => setSelfRating('assisted')}
+            accessibilityRole="radio"
+            accessibilityState={{ checked: selfRating === 'assisted' }}
+          >
+            <Text style={styles.selfEvalBadge}>مَقْبُول</Text>
+            <Text style={styles.selfEvalOptionTitle}>সহায়তা লেগেছে</Text>
+            <Text style={styles.selfEvalOptionNote}>হিন্ট লেগেছে</Text>
+          </Pressable>
+          <Pressable
+            style={[styles.selfEvalOption, selfRating === 'weak' && styles.selfEvalOptionActiveRed]}
+            onPress={() => setSelfRating('weak')}
+            accessibilityRole="radio"
+            accessibilityState={{ checked: selfRating === 'weak' }}
+          >
+            <Text style={styles.selfEvalBadge}>ضَعِيف</Text>
+            <Text style={styles.selfEvalOptionTitle}>কাঁচা</Text>
+            <Text style={styles.selfEvalOptionNote}>পুনরায় ঝালাই দরকার</Text>
+          </Pressable>
+        </View>
+      </View>
+
+      <View style={styles.sheikhCompareCard}>
+        <View style={styles.sheikhCompareHeader}>
+          <Volume2 color={colors.primary} size={18} />
+          <Text style={styles.sheikhCompareTitle}>ক্বারীর তিলাওয়াতের সাথে মিলিয়ে শুনুন</Text>
+        </View>
+        <Text style={styles.sheikhCompareDesc}>
+          শায়খ মিশারী রাশিদের মূল তিলাওয়াত শুনে নিজের মাখরাজ ও তানভীন যাচাই করুন।
+        </Text>
+        <Pressable
+          style={styles.sheikhPlayBtn}
+          onPress={() => void playAyah(1)}
+          accessibilityRole="button"
+        >
+          <Play color={colors.white} size={16} fill={colors.white} />
+          <Text style={styles.sheikhPlayBtnText}>সূরা {surah.nameBn} শুরু থেকে শুনুন</Text>
+        </Pressable>
+      </View>
+
       <View style={styles.accuracyNote}>
         <Info color={colors.primary} size={16} />
         <Text style={styles.accuracyNoteText}>
@@ -998,6 +1064,121 @@ function createStyles(colors: ColorPalette) {
       fontFamily: typography.bengali,
       fontSize: 11,
       lineHeight: 18,
+    },
+    selfEvalCard: {
+      marginTop: spacing.md,
+      padding: spacing.md,
+      borderRadius: radius.md,
+      backgroundColor: colors.surface,
+      borderColor: colors.gold,
+      borderWidth: 1,
+    },
+    selfEvalTitle: {
+      color: colors.ink,
+      fontFamily: typography.bengaliMedium,
+      fontSize: 14,
+      textAlign: 'center' as const,
+    },
+    selfEvalSubtitle: {
+      color: colors.muted,
+      fontFamily: typography.bengali,
+      fontSize: 11,
+      textAlign: 'center' as const,
+      marginTop: 2,
+      marginBottom: spacing.sm,
+    },
+    selfEvalGrid: {
+      flexDirection: 'row' as const,
+      gap: spacing.xs,
+    },
+    selfEvalOption: {
+      flex: 1,
+      paddingVertical: spacing.sm,
+      paddingHorizontal: 2,
+      borderRadius: radius.sm,
+      backgroundColor: colors.mint,
+      borderColor: colors.line,
+      borderWidth: 1,
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+    },
+    selfEvalOptionActiveGreen: {
+      backgroundColor: colors.mint,
+      borderColor: colors.primary,
+      borderWidth: 2,
+    },
+    selfEvalOptionActiveBlue: {
+      backgroundColor: '#EBF3FE',
+      borderColor: '#2563EB',
+      borderWidth: 2,
+    },
+    selfEvalOptionActiveGold: {
+      backgroundColor: colors.paleGold,
+      borderColor: colors.gold,
+      borderWidth: 2,
+    },
+    selfEvalOptionActiveRed: {
+      backgroundColor: '#FDEEE9',
+      borderColor: colors.coral,
+      borderWidth: 2,
+    },
+    selfEvalBadge: {
+      fontFamily: typography.arabicBold,
+      fontSize: 13,
+      color: colors.primary,
+    },
+    selfEvalOptionTitle: {
+      fontFamily: typography.bengaliMedium,
+      fontSize: 11,
+      color: colors.ink,
+      marginTop: 2,
+    },
+    selfEvalOptionNote: {
+      fontFamily: typography.bengali,
+      fontSize: 8,
+      color: colors.muted,
+      textAlign: 'center' as const,
+      marginTop: 1,
+    },
+    sheikhCompareCard: {
+      marginTop: spacing.md,
+      padding: spacing.md,
+      borderRadius: radius.md,
+      backgroundColor: colors.mint,
+      borderColor: colors.primary,
+      borderWidth: 1,
+    },
+    sheikhCompareHeader: {
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      gap: spacing.xs,
+    },
+    sheikhCompareTitle: {
+      color: colors.primary,
+      fontFamily: typography.bengaliMedium,
+      fontSize: 13,
+    },
+    sheikhCompareDesc: {
+      color: colors.ink,
+      fontFamily: typography.bengali,
+      fontSize: 11,
+      lineHeight: 17,
+      marginVertical: spacing.xs,
+    },
+    sheikhPlayBtn: {
+      marginTop: 4,
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      justifyContent: 'center' as const,
+      gap: spacing.xs,
+      paddingVertical: 8,
+      borderRadius: radius.sm,
+      backgroundColor: colors.primary,
+    },
+    sheikhPlayBtnText: {
+      color: colors.white,
+      fontFamily: typography.bengaliMedium,
+      fontSize: 12,
     },
     gap: { height: spacing.sm },
   };
