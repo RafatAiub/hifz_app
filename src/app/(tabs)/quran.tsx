@@ -1,5 +1,5 @@
 import { useAudioPlayer } from 'expo-audio';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import {
   BookOpen,
   CheckCircle2,
@@ -19,11 +19,12 @@ import {
   WifiOff,
   X,
 } from 'lucide-react-native';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { useApp } from '@/app-state/provider';
 import { QuranAyahRow } from '@/components/quran-ayah';
+import { TajweedArabicText } from '@/components/tajweed-arabic-text';
 import { AppScreen, IconAction } from '@/components/ui';
 import { quranDemoPack } from '@/data/quran-pack';
 import { deriveSurahRecitationStatus, type SurahLifecycleStage } from '@/domain/recitation';
@@ -42,7 +43,16 @@ const lifecycleLabel: Record<SurahLifecycleStage, string> = {
 };
 
 export default function QuranScreen() {
-  const [openSurah, setOpenSurah] = useState<number | null>(null);
+  const { surahNumber } = useLocalSearchParams<{ surahNumber?: string }>();
+  const [openSurah, setOpenSurah] = useState<number | null>(
+    surahNumber ? Number(surahNumber) : null,
+  );
+
+  useEffect(() => {
+    if (surahNumber) {
+      setOpenSurah(Number(surahNumber));
+    }
+  }, [surahNumber]);
 
   return openSurah === null ? (
     <SurahList onSelect={setOpenSurah} />
@@ -371,12 +381,16 @@ function SurahDetail({
                         </View>
                       ) : (
                         <View style={styles.ayahVerseFlow}>
-                          <Text style={styles.mushafArabicFlow}>
-                            {ayah.arabic}{' '}
-                            <Text style={styles.inlineMedallion}>
-                              {' '}﴿{toEasternDigits(ayah.ayahNumber)}﴾{' '}
-                            </Text>
-                          </Text>
+                          <TajweedArabicText
+                            ayahKey={ayah.key}
+                            text={ayah.arabic}
+                            style={styles.mushafArabicFlow}
+                            suffix={
+                              <Text style={styles.inlineMedallion}>
+                                {' '}﴿{toEasternDigits(ayah.ayahNumber)}﴾{' '}
+                              </Text>
+                            }
+                          />
                         </View>
                       )}
                     </Pressable>

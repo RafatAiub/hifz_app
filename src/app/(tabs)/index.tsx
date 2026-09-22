@@ -92,6 +92,21 @@ export default function TodayScreen() {
       ? Math.round((activeSurahMemorizedCount / activeSurahAyahs.length) * 100)
       : 0;
 
+  const nextSurah = useMemo(() => {
+    const order =
+      profile?.surahOrder && profile.surahOrder.length > 0
+        ? profile.surahOrder
+        : quranDemoPack.surahs.map((s) => s.number);
+    for (const sNum of order) {
+      if (sNum === activeSurah.number) continue;
+      const ayahs = quranDemoPack.ayahs.filter((a) => a.surahNumber === sNum);
+      if (ayahs.some((a) => !memorizedSet.has(a.key))) {
+        return quranDemoPack.surahs.find((s) => s.number === sNum);
+      }
+    }
+    return null;
+  }, [profile?.surahOrder, activeSurah.number, memorizedSet]);
+
   const filteredSurahs = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return quranDemoPack.surahs;
@@ -189,11 +204,26 @@ export default function TodayScreen() {
         </View>
 
         <View style={styles.heroButtonArea}>
-          <ActionButton
-            label={isActiveSurahComplete ? 'কুরআন তিলাওয়াত ও দাওর শুরু' : `বিসমিল্লাহ — সূরা ${activeSurah.nameBn} হিফজ শুরু`}
-            icon={<BookOpen color={colors.white} size={19} />}
-            onPress={() => router.push(`/session?surahNumber=${activeSurah.number}`)}
-          />
+          {isActiveSurahComplete && nextSurah ? (
+            <ActionButton
+              label={`পরবর্তী সূরা (${nextSurah.nameBn}) শুরু করুন →`}
+              icon={<ChevronRight color={colors.white} size={19} />}
+              onPress={() => {
+                setActiveSurah(nextSurah.number);
+                router.push(`/session?surahNumber=${nextSurah.number}`);
+              }}
+            />
+          ) : (
+            <ActionButton
+              label={
+                isActiveSurahComplete
+                  ? `সূরা ${activeSurah.nameBn} দাওর ও ঝালাই`
+                  : `বিসমিল্লাহ — সূরা ${activeSurah.nameBn} হিফজ শুরু`
+              }
+              icon={<BookOpen color={colors.white} size={19} />}
+              onPress={() => router.push(`/session?surahNumber=${activeSurah.number}`)}
+            />
+          )}
 
           <View style={styles.heroSecondaryActions}>
             <Pressable
@@ -202,17 +232,28 @@ export default function TodayScreen() {
               accessibilityRole="button"
             >
               <RotateCcw color={colors.primary} size={15} />
-              <Text style={styles.heroSecondaryBtnText}>সূরা পরিবর্তন / নতুন সূরা</Text>
+              <Text style={styles.heroSecondaryBtnText}>সূরা পরিবর্তন</Text>
             </Pressable>
 
-            <Pressable
-              style={styles.heroSecondaryBtn}
-              onPress={() => router.push(`/recitation-test?surahNumber=${activeSurah.number}`)}
-              accessibilityRole="button"
-            >
-              <Mic color={colors.primary} size={15} />
-              <Text style={styles.heroSecondaryBtnText}>পড়া পরীক্ষা (AI)</Text>
-            </Pressable>
+            {isActiveSurahComplete && nextSurah ? (
+              <Pressable
+                style={styles.heroSecondaryBtn}
+                onPress={() => router.push(`/session?surahNumber=${activeSurah.number}`)}
+                accessibilityRole="button"
+              >
+                <BookOpen color={colors.primary} size={15} />
+                <Text style={styles.heroSecondaryBtnText}>দাওর / ঝালাই</Text>
+              </Pressable>
+            ) : (
+              <Pressable
+                style={styles.heroSecondaryBtn}
+                onPress={() => router.push(`/recitation-test?surahNumber=${activeSurah.number}`)}
+                accessibilityRole="button"
+              >
+                <Mic color={colors.primary} size={15} />
+                <Text style={styles.heroSecondaryBtnText}>পড়া পরীক্ষা (AI)</Text>
+              </Pressable>
+            )}
           </View>
         </View>
       </View>

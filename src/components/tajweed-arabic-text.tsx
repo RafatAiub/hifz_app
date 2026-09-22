@@ -13,20 +13,31 @@ const segmentsByAyah = tajweedData as Record<string, TajweedSegment[]>;
  * skeleton didn't verify against this app's existing verse text -- see
  * scripts/build-tajweed-data.mjs for why some ayahs don't have coverage.
  */
+function sanitizeArabic(str: string): string {
+  if (!str) return str;
+  return str
+    .replace(/\u065E/g, '\u064C')
+    .replace(/\u0657/g, '\u064B')
+    .replace(/\u0656/g, '\u064D');
+}
+
 export function TajweedArabicText({
   ayahKey,
   text,
   style,
+  suffix,
 }: {
   ayahKey: string;
   text: string;
   style: StyleProp<TextStyle>;
+  suffix?: React.ReactNode;
 }) {
   const segments = segmentsByAyah[ayahKey];
   if (!segments) {
     return (
       <Text selectable style={style}>
-        {text}
+        {sanitizeArabic(text)}
+        {suffix}
       </Text>
     );
   }
@@ -36,12 +47,13 @@ export function TajweedArabicText({
       {segments.map((segment, index) => (
         <Fragment key={index}>
           {segment.rule ? (
-            <Text style={{ color: tajweedColors[segment.rule] }}>{segment.text}</Text>
+            <Text style={{ color: tajweedColors[segment.rule] }}>{sanitizeArabic(segment.text)}</Text>
           ) : (
-            segment.text
+            sanitizeArabic(segment.text)
           )}
         </Fragment>
       ))}
+      {suffix}
     </Text>
   );
 }

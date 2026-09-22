@@ -726,7 +726,7 @@ export default function SessionScreen() {
           </Pressable>
           <Pressable
             style={styles.fullMushafLink}
-            onPress={() => router.push('/quran')}
+            onPress={() => router.push(`/quran?surahNumber=${currentAyah.surahNumber}`)}
             accessibilityRole="button"
           >
             <Text style={styles.fullMushafLinkText}>মুসহাফ পাতা</Text>
