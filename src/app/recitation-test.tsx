@@ -117,10 +117,6 @@ export default function RecitationTestScreen() {
     () => quranDemoPack.surahs.find((s) => s.number === surahNumber),
     [surahNumber],
   );
-  const expectedWords = useMemo(
-    () => buildExpectedWords(surahNumber, quranDemoPack),
-    [surahNumber],
-  );
   const surahAyahs = useMemo(
     () =>
       quranDemoPack.ayahs
@@ -128,6 +124,40 @@ export default function RecitationTestScreen() {
         .sort((a, b) => a.ayahNumber - b.ayahNumber),
     [surahNumber],
   );
+
+  // Chunking support for large surahs (> 10 ayahs) to ensure 100% precision
+  const chunks = useMemo(() => {
+    const total = surah?.ayahCount ?? surahAyahs.length;
+    if (total <= 10) return null;
+    const list: Array<{ index: number; start: number; end: number; label: string }> = [];
+    for (let i = 1, idx = 0; i <= total; i += 10, idx++) {
+      const end = Math.min(total, i + 9);
+      list.push({ index: idx, start: i, end, label: `আয়াত ${i}–${end}` });
+    }
+    return list;
+  }, [surah, surahAyahs]);
+
+  const [selectedChunk, setSelectedChunk] = useState<number | null>(null);
+
+  const activeChunk = useMemo(() => {
+    if (selectedChunk === null || !chunks || !chunks[selectedChunk]) return null;
+    return chunks[selectedChunk];
+  }, [selectedChunk, chunks]);
+
+  const expectedWords = useMemo(
+    () =>
+      activeChunk
+        ? buildExpectedWords(surahNumber, quranDemoPack, activeChunk.start, activeChunk.end)
+        : buildExpectedWords(surahNumber, quranDemoPack),
+    [surahNumber, activeChunk],
+  );
+
+  const activeAyahs = useMemo(() => {
+    if (!activeChunk) return surahAyahs;
+    return surahAyahs.filter(
+      (a) => a.ayahNumber >= activeChunk.start && a.ayahNumber <= activeChunk.end,
+    );
+  }, [surahAyahs, activeChunk]);
 
   const [phase, setPhase] = useState<Phase>('intro');
   const [tracker, setTracker] = useState<RecitationTrackerState>(() =>
@@ -417,6 +447,54 @@ export default function RecitationTestScreen() {
             {surah.nameArabic}
           </Text>
           <Text style={styles.introHint}>পড়া শুরু করুন — কুরআনের লেখা লুকানো থাকবে।</Text>
+          {chunks ? (
+            <View style={styles.chunkSelectorBox}>
+              <Text style={styles.chunkSelectorTitle}>
+                চাক বেছে নিন (নির্ভুল পরীক্ষার জন্য):
+              </Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.chunkChipsRow}
+              >
+                <Pressable
+                  onPress={() => setSelectedChunk(null)}
+                  style={[
+                    styles.chunkChip,
+                    selectedChunk === null && styles.chunkChipActive,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.chunkChipText,
+                      selectedChunk === null && styles.chunkChipTextActive,
+                    ]}
+                  >
+                    সম্পূর্ণ সূরা ({surah.ayahCount})
+                  </Text>
+                </Pressable>
+                {chunks.map((ch) => (
+                  <Pressable
+                    key={ch.index}
+                    onPress={() => setSelectedChunk(ch.index)}
+                    style={[
+                      styles.chunkChip,
+                      selectedChunk === ch.index && styles.chunkChipActive,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.chunkChipText,
+                        selectedChunk === ch.index && styles.chunkChipTextActive,
+                      ]}
+                    >
+                      {ch.label}
+                    </Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+            </View>
+          ) : null}
           {error ? (
             <View style={styles.errorBanner}>
               <Text style={styles.errorText}>
@@ -447,14 +525,16 @@ export default function RecitationTestScreen() {
           onPress={() => router.back()}
         />
         <View style={styles.introBody}>
-          <Text style={styles.introTitle}>সূরা {surah.nameBn}</Text>
+          <Text style={styles.introTitle}>
+            সূরা {surah.nameBn} {activeChunk ? `(${activeChunk.label})` : ''}
+          </Text>
           <Text style={styles.listeningLabel}>
             {phase === 'listening' ? 'শুনছি…' : 'থামানো আছে'}
           </Text>
           <Text style={styles.ayahProgress}>
-            {Math.min(ayahsSoFar + (tracker.cursor < tracker.expected.length ? 1 : 0), surahAyahs.length)}
+            {Math.min(ayahsSoFar + (tracker.cursor < tracker.expected.length ? 1 : 0), activeAyahs.length)}
             {' / '}
-            {surahAyahs.length}
+            {activeAyahs.length}
           </Text>
           <Text style={styles.clock}>{formatClock(elapsedMs)}</Text>
           {phase === 'listening' && liveFeed.length > 0 ? (
@@ -689,6 +769,20 @@ export default function RecitationTestScreen() {
           <Text style={styles.repairCleanText}>মাশাআল্লাহ — কোনো ভুল ধরা পড়েনি।</Text>
         </View>
       )}
+
+      {chunks && activeChunk && selectedChunk !== null && selectedChunk < chunks.length - 1 ? (
+        <>
+          <View style={styles.gap} />
+          <ActionButton
+            label={`পরবর্তী চাক পরীক্ষা করুন (${chunks[selectedChunk + 1]?.label})`}
+            icon={<ArrowLeft color={colors.white} size={20} style={{ transform: [{ rotate: '180deg' }] }} />}
+            onPress={() => {
+              setSelectedChunk(selectedChunk + 1);
+              setPhase('intro');
+            }}
+          />
+        </>
+      ) : null}
 
       <View style={styles.gap} />
       <ActionButton label="ফিরে যান" tone="quiet" onPress={() => router.back()} />
@@ -1179,6 +1273,44 @@ function createStyles(colors: ColorPalette) {
       color: colors.white,
       fontFamily: typography.bengaliMedium,
       fontSize: 12,
+    },
+    chunkSelectorBox: {
+      marginTop: spacing.md,
+      marginBottom: spacing.xs,
+      width: '100%',
+    },
+    chunkSelectorTitle: {
+      color: colors.muted,
+      fontFamily: typography.bengaliMedium,
+      fontSize: 12,
+      marginBottom: spacing.xs,
+      textAlign: 'center' as const,
+    },
+    chunkChipsRow: {
+      flexDirection: 'row' as const,
+      gap: spacing.xs,
+      paddingHorizontal: spacing.xs,
+      paddingVertical: 2,
+    },
+    chunkChip: {
+      paddingVertical: 6,
+      paddingHorizontal: spacing.sm,
+      borderRadius: radius.full,
+      backgroundColor: colors.surface,
+      borderColor: colors.line,
+      borderWidth: 1,
+    },
+    chunkChipActive: {
+      backgroundColor: colors.primary,
+      borderColor: colors.primary,
+    },
+    chunkChipText: {
+      color: colors.ink,
+      fontFamily: typography.bengaliMedium,
+      fontSize: 12,
+    },
+    chunkChipTextActive: {
+      color: colors.white,
     },
     gap: { height: spacing.sm },
   };

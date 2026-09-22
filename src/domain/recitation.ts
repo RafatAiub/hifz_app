@@ -133,10 +133,15 @@ export interface ExpectedWord {
 export function buildExpectedWords(
   surahNumber: number,
   contentPack: QuranContentPack,
+  startAyah?: number,
+  endAyah?: number,
 ): ExpectedWord[] {
-  const ayahs = contentPack.ayahs
+  let ayahs = contentPack.ayahs
     .filter((ayah) => ayah.surahNumber === surahNumber)
     .sort((a, b) => a.ayahNumber - b.ayahNumber);
+  if (startAyah !== undefined && endAyah !== undefined) {
+    ayahs = ayahs.filter((a) => a.ayahNumber >= startAyah && a.ayahNumber <= endAyah);
+  }
   const words: ExpectedWord[] = [];
   let globalIndex = 0;
   for (const ayah of ayahs) {

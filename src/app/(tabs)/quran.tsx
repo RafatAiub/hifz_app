@@ -374,7 +374,7 @@ function SurahDetail({
                           <Text style={styles.mushafArabicFlow}>
                             {ayah.arabic}{' '}
                             <Text style={styles.inlineMedallion}>
-                              ۝{toEasternDigits(ayah.ayahNumber)}
+                              {' '}﴿{toEasternDigits(ayah.ayahNumber)}﴾{' '}
                             </Text>
                           </Text>
                         </View>
@@ -699,7 +699,7 @@ function createStyles(colors: ColorPalette) {
       borderWidth: 1,
       borderColor: colors.gold,
       padding: spacing.md,
-      backgroundColor: '#FCFBF7',
+      backgroundColor: colors.surfaceElevated,
     },
     surahBanner: {
       flexDirection: 'row' as const,
@@ -793,8 +793,8 @@ function createStyles(colors: ColorPalette) {
     },
     inlineMedallion: {
       color: colors.gold,
-      fontFamily: typography.arabicBold,
-      fontSize: 20,
+      fontFamily: typography.amiri,
+      fontSize: 22,
     },
     attribution: {
       color: colors.muted,
